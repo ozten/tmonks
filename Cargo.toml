@@ -1,0 +1,49 @@
+[package]
+name = "tmons"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Web UI for tmux sessions"
+license = "MIT OR Apache-2.0"
+authors = ["Austin King"]
+repository = "https://github.com/ozten/tmonks"
+default-run = "tmons"
+
+[dependencies]
+axum = { version = "0.8", features = ["ws", "macros"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+clap = { version = "4", features = ["derive"] }
+rand = "0.9"
+base64 = "0.22"
+subtle = "2.6"
+rust-embed = "8"
+maud = { version = "0.27", features = ["axum"] }
+mime_guess = "2"
+url = "2.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures-util = "0.3"
+bytes = "1"
+vte = "0.15"
+thiserror = "2"
+anyhow = "1"
+http = "1"
+hyper = "1"
+
+[dev-dependencies]
+http-body-util = "0.1"
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "tokio"] }
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }
+tracing-test = "0.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
