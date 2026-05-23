@@ -81,6 +81,27 @@ html, body {
   padding: 10px 16px;
   cursor: pointer;
   border-left: 2px solid transparent;
+  user-select: none;
+}
+
+.session-status {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-muted);
+}
+
+.session-error {
+  margin-left: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--badge-needs-input);
+  color: white;
+  font-size: 9px;
+  text-align: center;
+  line-height: 14px;
+  cursor: help;
 }
 
 #session-list li:hover {
@@ -200,6 +221,15 @@ html, body {
   border-radius: 6px;
   padding: 10px 14px;
   z-index: 100;
+  max-width: 360px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  display: none;
+  animation: fadein 200ms ease-in;
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
 }
 
 .empty-state {

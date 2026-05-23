@@ -23,6 +23,15 @@ import { SearchAddon } from "/assets/vendor/addon-search.mjs";
 
 const $ = (sel) => document.querySelector(sel);
 
+/** Human-readable labels per the plan's badge spec. */
+const STATUS_LABELS = {
+  idle: "idle",
+  working: "working",
+  "needs-input": "needs input",
+  "idle-notify": "waiting on you",
+  unknown: "unknown",
+};
+
 // ---- Pane WebSocket client --------------------------------------------------
 
 class PaneClient {
@@ -42,8 +51,9 @@ class PaneClient {
     const url = `${proto}//${location.host}/ws/pane/${encodeURIComponent(this.sessionId)}`;
     this.ws = new WebSocket(url);
     this.ws.binaryType = "arraybuffer";
+    this._sawAnyMessage = false;
     this.ws.addEventListener("open", () => this._onOpen());
-    this.ws.addEventListener("message", (ev) => this._onMessage(ev));
+    this.ws.addEventListener("message", (ev) => { this._sawAnyMessage = true; this._onMessage(ev); });
     this.ws.addEventListener("close", (ev) => this._onClose(ev));
     this.ws.addEventListener("error", (ev) => this._onError(ev));
   }
@@ -162,6 +172,16 @@ class PaneClient {
 
   _onClose(ev) {
     if (this._onData) { this._onData.dispose(); this._onData = null; }
+    // If the WS closed before any data arrived, treat as "session not
+    // found / no longer exists" — show a toast and ask the dashboard for
+    // a fresh session list.
+    if (!this._sawAnyMessage && ev.code === 1011) {
+      showToast(`Session ${this.sessionId} no longer exists`);
+      if (window.tmons?.dashboard?.refresh) {
+        window.tmons.dashboard.refresh();
+      }
+      return;
+    }
     // Unit 8 wires reconnect with exponential backoff here.
     if (ev.code !== 1000 && ev.code !== 1001) {
       showToast(`Pane closed (${ev.code}): ${ev.reason || "no reason"}`);
@@ -258,6 +278,14 @@ class DashboardClient {
     });
   }
 
+  /** Reconnect, forcing the server to send a fresh `sessions` frame. */
+  refresh() {
+    if (this.ws) {
+      try { this.ws.close(); } catch (_) {}
+    }
+    this.connect();
+  }
+
   _onMessage(ev) {
     if (typeof ev.data !== "string") return;
     let body;
@@ -327,7 +355,10 @@ class Sidebar {
     if (!entry) return;
     const dot = entry.row.querySelector(".status-dot");
     dot.className = `status-dot ${status}`;
-    entry.row.setAttribute("aria-label", `${entry.name} — ${status}${command ? " (" + command + ")" : ""}`);
+    const label = STATUS_LABELS[status] || status;
+    const labelEl = entry.row.querySelector(".session-status");
+    if (labelEl) labelEl.textContent = label;
+    entry.row.setAttribute("aria-label", `${entry.name} — ${label}${command ? " (" + command + ")" : ""}`);
     if (command && command !== entry.command) {
       entry.command = command;
       const meta = entry.row.querySelector(".session-meta");
@@ -366,19 +397,29 @@ class Sidebar {
     li.dataset.id = id;
     li.setAttribute("role", "button");
     li.tabIndex = 0;
+    li.setAttribute("aria-label", `${name} — unknown`);
+
     const dot = document.createElement("span");
     dot.className = "status-dot unknown";
     li.appendChild(dot);
+
     const meta = document.createElement("div");
     const nameEl = document.createElement("div");
     nameEl.className = "session-name";
     nameEl.textContent = name;
     meta.appendChild(nameEl);
+
     const cmdEl = document.createElement("div");
     cmdEl.className = "session-meta";
-    cmdEl.textContent = "";
     meta.appendChild(cmdEl);
+
     li.appendChild(meta);
+
+    const statusEl = document.createElement("span");
+    statusEl.className = "session-status";
+    statusEl.textContent = "unknown";
+    li.appendChild(statusEl);
+
     li.addEventListener("click", () => this.onSelect(id));
     li.addEventListener("keypress", (ev) => {
       if (ev.key === "Enter" || ev.key === " ") {
