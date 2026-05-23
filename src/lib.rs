@@ -11,6 +11,7 @@ pub mod observability;
 pub mod server;
 pub mod templates;
 pub mod tmux;
+pub mod vt_filter;
 
 pub use auth::{COOKIE_NAME, Token};
 pub use server::{AppState, BuildInfo, router};
