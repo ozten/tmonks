@@ -315,7 +315,10 @@ function wireSearchOverlay(search, term) {
   const prev = $("#search-prev");
   const next = $("#search-next");
   const close = $("#search-close");
+  const toggle = $("#search-toggle");
   if (!overlay || !input) return;
+
+  toggle?.addEventListener("click", () => toggleSearchOverlay(search, term));
 
   const opts = { caseSensitive: false, wholeWord: false, regex: false };
 
