@@ -195,6 +195,17 @@ class PaneClient {
 
 // ---- Terminal mount --------------------------------------------------------
 
+/** VT byte sequences for the on-screen key buttons. */
+const KEY_SEQUENCES = {
+  esc: "\x1b",
+  tab: "\t",
+  "ctrl-c": "\x03",
+  up: "\x1b[A",
+  down: "\x1b[B",
+  left: "\x1b[D",
+  right: "\x1b[C",
+};
+
 function mountTerminal() {
   const container = $("#terminal-container");
   if (!container) return null;
@@ -219,6 +230,29 @@ function mountTerminal() {
   const search = new SearchAddon();
   term.loadAddon(search);
 
+  // Cmd-C / Ctrl-Shift-C with a selection → copy via clipboard API and
+  // suppress the default ETX-on-Ctrl-C behavior. No selection → fall through
+  // (so Ctrl-C still interrupts).
+  // Cmd-F / Ctrl-F → toggle the search overlay; suppress browser default
+  // (which would also open browser find).
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown") return true;
+    const meta = ev.metaKey || ev.ctrlKey;
+    if (meta && ev.key === "c" && term.hasSelection() && !ev.shiftKey) {
+      const text = term.getSelection();
+      if (text) {
+        navigator.clipboard.writeText(text).catch(() => {});
+        return false; // swallow — don't send ETX
+      }
+    }
+    if (meta && (ev.key === "f" || ev.key === "F")) {
+      toggleSearchOverlay(search, term);
+      ev.preventDefault();
+      return false;
+    }
+    return true;
+  });
+
   term.open(container);
   fit.fit();
 
@@ -227,6 +261,122 @@ function mountTerminal() {
   term.writeln("\x1b[2mSelect a session in the sidebar to focus its pane.\x1b[0m");
 
   return { term, fit, search };
+}
+
+function toggleSearchOverlay(search, term) {
+  const overlay = $("#search-overlay");
+  if (!overlay) return;
+  if (overlay.classList.contains("hidden")) {
+    overlay.classList.remove("hidden");
+    const input = $("#search-input");
+    if (input) {
+      input.value = "";
+      input.focus();
+    }
+  } else {
+    overlay.classList.add("hidden");
+    search.clearDecorations();
+    term.focus();
+  }
+}
+
+function wireSearchOverlay(search, term) {
+  const overlay = $("#search-overlay");
+  const input = $("#search-input");
+  const prev = $("#search-prev");
+  const next = $("#search-next");
+  const close = $("#search-close");
+  if (!overlay || !input) return;
+
+  const opts = { caseSensitive: false, wholeWord: false, regex: false };
+
+  input.addEventListener("input", () => {
+    if (input.value) search.findNext(input.value, opts);
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      if (ev.shiftKey) search.findPrevious(input.value, opts);
+      else search.findNext(input.value, opts);
+    }
+    if (ev.key === "Escape") {
+      overlay.classList.add("hidden");
+      search.clearDecorations();
+      term.focus();
+    }
+  });
+  prev?.addEventListener("click", () => search.findPrevious(input.value, opts));
+  next?.addEventListener("click", () => search.findNext(input.value, opts));
+  close?.addEventListener("click", () => {
+    overlay.classList.add("hidden");
+    search.clearDecorations();
+    term.focus();
+  });
+}
+
+function wireKeyRow(term) {
+  document.querySelectorAll("#key-row button[data-key]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      const seq = KEY_SEQUENCES[key];
+      if (seq) {
+        term.input(seq, true); // wasUserInput=true → onData fires → forward to WS
+        term.focus();
+      }
+    });
+  });
+}
+
+function wirePasteButton(term) {
+  $("#paste-clipboard")?.addEventListener("click", async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        term.paste(text);
+        term.focus();
+      }
+    } catch (e) {
+      showToast(`Paste failed: ${e.message || e}`);
+    }
+  });
+}
+
+/** Strip ANSI escape sequences from raw bytes for plaintext copy. */
+function stripAnsi(text) {
+  // Lightweight: handle CSI, OSC (terminated by BEL or ESC\), and ESC X final-byte
+  // forms. Doesn't need to be perfect — xterm.js's serialize-addon would be a
+  // heavier alternative, but this is sufficient for the copy-scrollback use case.
+  // eslint-disable-next-line no-control-regex
+  return text
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "") // OSC
+    .replace(/\x1b\[[?!>=]?[0-9;:]*[A-Za-z]/g, "")    // CSI
+    .replace(/\x1b[ -\/]*[0-~]/g, "");                // ESC X
+}
+
+function wireCopyScrollback() {
+  $("#copy-scrollback")?.addEventListener("click", async () => {
+    const client = window.tmons?.pane;
+    if (!client) {
+      showToast("No session focused");
+      return;
+    }
+    try {
+      const bytes = await client.requestScrollback();
+      const text = new TextDecoder().decode(bytes);
+      const stripped = stripAnsi(text);
+      const sizeMb = (stripped.length / (1024 * 1024)).toFixed(2);
+      if (stripped.length > 1024 * 1024 && isIOSSafari()) {
+        if (!confirm(`Copy ${sizeMb} MiB of scrollback?`)) return;
+      }
+      await navigator.clipboard.writeText(stripped);
+      showToast(`Copied ${sizeMb} MiB to clipboard`);
+    } catch (e) {
+      showToast(`Copy scrollback failed: ${e.message || e}`);
+    }
+  });
+}
+
+function isIOSSafari() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) && !/CriOS|FxiOS/.test(navigator.userAgent);
 }
 
 // ---- Sidebar toggle --------------------------------------------------------
@@ -438,6 +588,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const mounted = mountTerminal();
   if (!mounted) return;
+
+  wireSearchOverlay(mounted.search, mounted.term);
+  wireKeyRow(mounted.term);
+  wirePasteButton(mounted.term);
+  wireCopyScrollback();
 
   window.tmons = window.tmons || {};
   window.tmons.terminal = mounted;

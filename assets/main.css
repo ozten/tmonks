@@ -169,8 +169,66 @@ html, body {
 #pane-area {
   background: var(--terminal-bg);
   display: grid;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: auto 1fr auto;
   min-height: 0;
+  position: relative;
+}
+
+#pane-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+
+#pane-toolbar button {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#pane-toolbar button:hover { border-color: var(--accent); }
+
+#search-overlay {
+  position: absolute;
+  top: 50px;
+  right: 16px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+}
+
+#search-overlay.hidden { display: none; }
+
+#search-overlay input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  width: 180px;
+}
+
+#search-overlay button {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 #terminal-container {

@@ -34,6 +34,23 @@ pub fn index_page() -> Markup {
                         }
                     }
                     main #pane-area aria-label="focused tmux pane" {
+                        div #pane-toolbar role="toolbar" aria-label="pane actions" {
+                            button #copy-scrollback type="button" {
+                                "Copy scrollback"
+                            }
+                            button #paste-clipboard type="button" {
+                                "Paste"
+                            }
+                            button #search-toggle type="button" aria-label="Search (Ctrl/Cmd-F)" {
+                                "Search"
+                            }
+                        }
+                        div #search-overlay.hidden role="search" {
+                            input #search-input type="text" placeholder="Search…" aria-label="Search term";
+                            button #search-prev type="button" aria-label="Previous match" { "↑" }
+                            button #search-next type="button" aria-label="Next match" { "↓" }
+                            button #search-close type="button" aria-label="Close search" { "×" }
+                        }
                         div #terminal-container { }
                         div #key-row.hidden role="toolbar" aria-label="terminal keys" {
                             button data-key="esc" { "Esc" }
