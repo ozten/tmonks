@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use tokio_util::sync::CancellationToken;
 
-use tmons::{
+use tmonks::{
     auth::{self, print_startup_url},
     cli,
     observability,
@@ -65,7 +65,7 @@ async fn run(args: cli::Cli) -> Result<()> {
         Some(v) => {
             if !v.satisfies_min() {
                 anyhow::bail!(
-                    "tmux {}.{} is too old. tmons requires tmux >= 3.4. Detected line: {v_line:?}",
+                    "tmux {}.{} is too old. tmonks requires tmux >= 3.4. Detected line: {v_line:?}",
                     v.major, v.minor
                 );
             }

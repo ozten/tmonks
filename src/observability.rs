@@ -1,6 +1,6 @@
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-/// Initialise `tracing_subscriber` with sensible defaults for tmons.
+/// Initialise `tracing_subscriber` with sensible defaults for tmonks.
 ///
 /// * `RUST_LOG` overrides the default filter.
 /// * `--verbose` upgrades the default to debug.
@@ -8,7 +8,7 @@ use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 ///   logged. We achieve this by restricting `TraceLayer` to fields we control
 ///   (see `server::trace_layer`) — this function only sets up the formatter.
 pub fn init(verbose: bool) {
-    let default = if verbose { "tmons=debug,warn" } else { "tmons=info,warn" };
+    let default = if verbose { "tmonks=debug,warn" } else { "tmonks=info,warn" };
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default));
 

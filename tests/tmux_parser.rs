@@ -4,9 +4,9 @@
 //! This file adds wire-shape integration: feeding multi-line fixtures with
 //! mixed notifications, blocks, and pane output.
 
-use tmons::tmux::escape;
-use tmons::tmux::events::ControlEvent;
-use tmons::tmux::parser::LineClassifier;
+use tmonks::tmux::escape;
+use tmonks::tmux::events::ControlEvent;
+use tmonks::tmux::parser::LineClassifier;
 
 fn feed_all(s: &str) -> Vec<ControlEvent> {
     let mut clf = LineClassifier::new();

@@ -1,4 +1,4 @@
-// tmons frontend — sidebar + focused-pane WebSocket client.
+// tmonks frontend — sidebar + focused-pane WebSocket client.
 //
 // CSP: served as `script-src 'self'`. No inline scripts. The page loads
 // `xterm.js`, `addon-fit`, `addon-web-links`, and `addon-search` from
@@ -193,8 +193,8 @@ class PaneClient {
     // a fresh session list. Do NOT auto-reconnect (the session is gone).
     if (!this._sawAnyMessage && ev.code === 1011) {
       showToast(`Session ${this.sessionId} no longer exists`);
-      if (window.tmons?.dashboard?.refresh) {
-        window.tmons.dashboard.refresh();
+      if (window.tmonks?.dashboard?.refresh) {
+        window.tmonks.dashboard.refresh();
       }
       return;
     }
@@ -286,7 +286,7 @@ function mountTerminal() {
   fit.fit();
 
   // Hint the user; this is overwritten by the seed frame on session focus.
-  term.writeln("tmons \x1b[36m" + window.location.host + "\x1b[0m");
+  term.writeln("tmonks \x1b[36m" + window.location.host + "\x1b[0m");
   term.writeln("\x1b[2mSelect a session in the sidebar to focus its pane.\x1b[0m");
 
   return { term, fit, search };
@@ -383,7 +383,7 @@ function stripAnsi(text) {
 
 function wireCopyScrollback() {
   $("#copy-scrollback")?.addEventListener("click", async () => {
-    const client = window.tmons?.pane;
+    const client = window.tmonks?.pane;
     if (!client) {
       showToast("No session focused");
       return;
@@ -685,34 +685,34 @@ document.addEventListener("DOMContentLoaded", () => {
   wirePasteButton(mounted.term);
   wireCopyScrollback();
 
-  window.tmons = window.tmons || {};
-  window.tmons.terminal = mounted;
+  window.tmonks = window.tmonks || {};
+  window.tmonks.terminal = mounted;
 
   const openSession = (sessionId) => {
-    if (window.tmons.pane) {
-      window.tmons.pane.close();
+    if (window.tmonks.pane) {
+      window.tmonks.pane.close();
     }
     const client = new PaneClient(mounted.term, mounted.fit, sessionId);
     client.connect();
-    window.tmons.pane = client;
+    window.tmonks.pane = client;
 
     const container = $("#terminal-container");
-    if (window.tmons._paneRO) window.tmons._paneRO.disconnect();
+    if (window.tmonks._paneRO) window.tmonks._paneRO.disconnect();
     const ro = new ResizeObserver(() => client.onContainerResize());
     ro.observe(container);
-    window.tmons._paneRO = ro;
+    window.tmonks._paneRO = ro;
     sidebar.setActive(sessionId);
 
     // Hide the sidebar drawer on mobile after selection.
     document.getElementById("sidebar")?.classList.remove("open");
     return client;
   };
-  window.tmons.openSession = openSession;
-  window.tmons.showToast = showToast;
+  window.tmonks.openSession = openSession;
+  window.tmonks.showToast = showToast;
 
   const sidebar = new Sidebar(document.getElementById("session-list"), openSession);
   const dashboard = new DashboardClient(sidebar);
   dashboard.connect();
-  window.tmons.dashboard = dashboard;
-  window.tmons.sidebar = sidebar;
+  window.tmonks.dashboard = dashboard;
+  window.tmonks.sidebar = sidebar;
 });

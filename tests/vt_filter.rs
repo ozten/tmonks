@@ -5,7 +5,7 @@
 //! inside the pane can produce arbitrary escape sequences, including OSC 52
 //! clipboard writes and `javascript:` hyperlinks).
 
-use tmons::vt_filter::{InboundFilter, OutboundFilter, inbound, outbound};
+use tmonks::vt_filter::{InboundFilter, OutboundFilter, inbound, outbound};
 use vte::Parser;
 
 fn out(input: &[u8]) -> Vec<u8> {
@@ -182,17 +182,17 @@ fn outbound_drops_focus_events() {
 
 #[test]
 fn outbound_keeps_osc_2_window_title() {
-    let input = b"\x1b]2;tmons\x1b\\";
+    let input = b"\x1b]2;tmonks\x1b\\";
     let result = out(input);
     assert!(!result.is_empty(), "OSC 2 dropped");
-    assert!(result.windows(5).any(|w| w == b"tmons"));
+    assert!(result.windows(6).any(|w| w == b"tmonks"));
 }
 
 // ----- Outbound: cross-chunk sequence safety -----
 
 #[test]
 fn outbound_streaming_handles_split_csi() {
-    use tmons::vt_filter::outbound::OutboundStream;
+    use tmonks::vt_filter::outbound::OutboundStream;
     let mut s = OutboundStream::new();
     // First half: ESC [ ? 25
     s.feed(b"\x1b[?25");
@@ -203,7 +203,7 @@ fn outbound_streaming_handles_split_csi() {
 
 #[test]
 fn outbound_streaming_handles_split_sgr() {
-    use tmons::vt_filter::outbound::OutboundStream;
+    use tmonks::vt_filter::outbound::OutboundStream;
     let mut s = OutboundStream::new();
     s.feed(b"\x1b[3");
     s.feed(b"1mred\x1b[0m");
@@ -289,7 +289,7 @@ fn inbound_drops_oversized_chunk() {
 #[test]
 fn inbound_accepts_chunks_under_cap() {
     // A chunk just under MAX_INBOUND_CHUNK_BYTES passes through.
-    let input = vec![b'a'; tmons::vt_filter::inbound::MAX_INBOUND_CHUNK_BYTES - 1];
+    let input = vec![b'a'; tmonks::vt_filter::inbound::MAX_INBOUND_CHUNK_BYTES - 1];
     let result = inb(&input);
     assert_eq!(result.len(), input.len());
 }

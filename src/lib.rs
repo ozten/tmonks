@@ -1,4 +1,4 @@
-//! tmons — Web UI for tmux sessions.
+//! tmonks — Web UI for tmux sessions.
 //!
 //! This crate exposes a small public surface so the binary and the integration
 //! tests can share infrastructure (auth, router, state). Internal modules are

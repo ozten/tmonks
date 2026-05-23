@@ -16,7 +16,7 @@ use tokio::process::Command;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_util::sync::CancellationToken;
 
-use tmons::{AppState, BuildInfo, COOKIE_NAME, Token, router};
+use tmonks::{AppState, BuildInfo, COOKIE_NAME, Token, router};
 
 fn tmux_available() -> bool {
     std::process::Command::new("tmux")
@@ -40,7 +40,7 @@ impl Fixture {
     async fn start(session_name: &str) -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket = format!("tmons-pane-{}-{}", std::process::id(), n);
+        let socket = format!("tmonks-pane-{}-{}", std::process::id(), n);
 
         // Bring up a tmux server with the requested session.
         let _ = Command::new("tmux")
@@ -54,7 +54,7 @@ impl Fixture {
             .expect("tmux new-session");
         assert!(status.success());
 
-        // Stand up the tmons server on an ephemeral port.
+        // Stand up the tmonks server on an ephemeral port.
         let token = Token::new_random().unwrap();
         let token_arc = Arc::new(token.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

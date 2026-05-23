@@ -2,7 +2,7 @@
 //!
 //! Logs a single `info!` per CLI noting the calibrated vs. detected version.
 //! Mismatch → `warn!`. CLI not on PATH → `info!` (it's normal not to have all
-//! three installed). No SIGHUP reload — when a CLI updates, ship a new tmons.
+//! three installed). No SIGHUP reload — when a CLI updates, ship a new tmonks.
 
 use std::time::Duration;
 

@@ -1,6 +1,6 @@
-//! Auth and same-origin enforcement for tmons.
+//! Auth and same-origin enforcement for tmonks.
 //!
-//! tmons binds to 127.0.0.1 and trusts:
+//! tmonks binds to 127.0.0.1 and trusts:
 //! 1. The user's host file system (anyone with the URL token can drive shells).
 //! 2. The browser's same-origin policy.
 //!
@@ -34,7 +34,7 @@ use subtle::ConstantTimeEq;
 
 use crate::server::AppState;
 
-pub const COOKIE_NAME: &str = "tmons_session";
+pub const COOKIE_NAME: &str = "tmonks_session";
 
 /// The server-side token. Stored in `AppState` and compared in constant time
 /// against incoming cookies.
@@ -73,7 +73,7 @@ pub struct TokenQuery {
 /// Handler for `GET /?t=<token>` — sets the cookie and 302s to `/`.
 ///
 /// Browsers visiting `/?t=<token>` with a valid token receive:
-///   * `Set-Cookie: tmons_session=<token>; HttpOnly; SameSite=Strict; Path=/`
+///   * `Set-Cookie: tmonks_session=<token>; HttpOnly; SameSite=Strict; Path=/`
 ///   * `302 Location: /`
 ///
 /// Visiting `/?t=<token>` with an invalid token returns 401.

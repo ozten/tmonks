@@ -1,8 +1,10 @@
-# tmons
+# tmonks
 
 Web UI into any tmux session. Because tmux is a nightmare and your prayers have been answered.
 
-`tmons` is a single Rust binary that launches a local web server exposing a browser-based UI for your tmux sessions. Open the URL on a phone or laptop, see a sidebar of sessions with status badges (`idle` / `working` / `needs-input`), click one to focus it, and interact with the live session through `xterm.js` — including native browser copy/paste, on-screen keys for iOS-hostile inputs (`Esc` / `Tab` / `Ctrl-C` / arrows), and full physical-keyboard passthrough.
+![tmonks screenshot](screenshot.png)
+
+`tmonks` is a single Rust binary that launches a local web server exposing a browser-based UI for your tmux sessions. Open the URL on a phone or laptop, see a sidebar of sessions with status badges (`idle` / `working` / `needs-input`), click one to focus it, and interact with the live session through `xterm.js` — including native browser copy/paste, on-screen keys for iOS-hostile inputs (`Esc` / `Tab` / `Ctrl-C` / arrows), and full physical-keyboard passthrough.
 
 The MVP targets *agentic CLIs* specifically: `claude`, `codex`, and `opencode`. Sidebar badges reflect their live state — `working` while they're generating, `needs-input` when waiting on a tool-use confirmation, `idle-notify` when they're nudging you for input.
 
@@ -20,14 +22,14 @@ cd tmonks
 cargo build --release
 ```
 
-The binary lands at `target/release/tmons`.
+The binary lands at `target/release/tmonks`.
 
 ## Run
 
-Start `tmons`. It binds to `127.0.0.1` on an ephemeral port and prints a one-time-token URL on stdout:
+Start `tmonks`. It binds to `127.0.0.1` on an ephemeral port and prints a one-time-token URL on stdout:
 
 ```bash
-$ target/release/tmons
+$ target/release/tmonks
 Open: http://127.0.0.1:54213/?t=Q9KFiL6F_d2Dz243KFcoVd16lvtYdAZBBuBwK4HVhdY
 ```
 
@@ -45,14 +47,14 @@ Open that URL in your browser. The first hit consumes the token, sets an `HttpOn
 
 ### Remote access
 
-`tmons` won't bind a non-loopback address. To use it on a remote machine:
+`tmonks` won't bind a non-loopback address. To use it on a remote machine:
 
 ```bash
 # On your laptop:
 ssh -L 8080:127.0.0.1:54213 remote-host
 
 # Then open http://127.0.0.1:8080/?t=<token> in your local browser
-# (the token still comes from the remote tmons stdout).
+# (the token still comes from the remote tmonks stdout).
 ```
 
 The Host-header allowlist and Origin check work naturally through the tunnel — `Host` and `Origin` both resolve to `127.0.0.1:8080`, so the upgrade succeeds.
@@ -61,10 +63,10 @@ The Host-header allowlist and Origin check work naturally through the tunnel —
 
 ```bash
 tmux -L work new-session -d -s api 'sleep 600'
-tmons --socket work
+tmonks --socket work
 ```
 
-Every tmux invocation inside `tmons` will prepend `-L work`.
+Every tmux invocation inside `tmonks` will prepend `-L work`.
 
 ## What you'll see
 
@@ -84,25 +86,25 @@ Every tmux invocation inside `tmons` will prepend `-L work`.
 - Pane content is never logged, at any log level. `?t=<token>` is scrubbed from `tracing` spans.
 - No telemetry, no auto-update, no remote endpoints contacted.
 
-**What `tmons` does NOT defend against**: a compromised host, a malicious `~/.tmux.conf`, supply-chain attacks on dependencies, or anyone with read access to the printed URL (they get shell access). If you suspect the URL leaked — kill `tmons` and restart to rotate.
+**What `tmonks` does NOT defend against**: a compromised host, a malicious `~/.tmux.conf`, supply-chain attacks on dependencies, or anyone with read access to the printed URL (they get shell access). If you suspect the URL leaked — kill `tmonks` and restart to rotate.
 
 ## Diagnostics
 
 `GET /debug/state` (cookie-auth) returns build + runtime info as JSON:
 
 ```bash
-$ curl -sS -b "tmons_session=$TOKEN" http://127.0.0.1:54213/debug/state
+$ curl -sS -b "tmonks_session=$TOKEN" http://127.0.0.1:54213/debug/state
 {"build":{"version":"0.1.0","commit":"unknown"},"bound_addr":"127.0.0.1:54213","no_auth":false,"socket":null}
 ```
 
-Verbose logs to stderr with `--verbose` or `RUST_LOG=tmons=debug`.
+Verbose logs to stderr with `--verbose` or `RUST_LOG=tmonks=debug`.
 
 ## Known limitations (MVP)
 
 - One focused pane at a time per browser tab. Switching sessions kills the old control-mode child and spawns a new one.
 - Pane-tree / window-tree navigation, session creation/kill from the UI, splits, and saved snippets are roadmap, not v1.
 - Two tabs on the same session interleave keystrokes — tmux handles multi-client cleanly at the protocol level, but typing in both at once will be confusing.
-- `refresh-client -C` on resize affects all attached clients. If you have both a native tmux client and `tmons` attached to the same session, the pane will resize to whichever client is smallest. Consider `set-window-option aggressive-resize on` in `.tmux.conf`.
+- `refresh-client -C` on resize affects all attached clients. If you have both a native tmux client and `tmonks` attached to the same session, the pane will resize to whichever client is smallest. Consider `set-window-option aggressive-resize on` in `.tmux.conf`.
 - Status detection is heuristic — marker text inside a quoted user message can produce false positives. Calibrated against current Claude Code 2.x / Codex 0.x / opencode 0.x; a version drift will surface a `WARN` at startup.
 
 ## Development

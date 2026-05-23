@@ -5,7 +5,7 @@ use clap::Parser;
 
 #[derive(Debug, Clone, Parser)]
 #[command(
-    name = "tmons",
+    name = "tmonks",
     version,
     about = "Web UI for tmux sessions",
     long_about = "Launches a local web server exposing a browser-based UI for your tmux sessions. \
@@ -43,7 +43,7 @@ impl Cli {
     pub fn validate(&self) -> Result<()> {
         if !self.bind.is_loopback() {
             bail!(
-                "--bind {} is not a loopback address. tmons MVP does not support non-loopback \
+                "--bind {} is not a loopback address. tmonks MVP does not support non-loopback \
                  binds (no TLS, no multi-user auth). For remote access use SSH tunneling:\n\
                  \n    ssh -L 8080:127.0.0.1:<port> remote\n\n\
                  Then open http://127.0.0.1:8080/?t=<token> in your local browser.",
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn rejects_non_loopback_bind() {
-        let cli = Cli::parse_from(["tmons", "--bind", "0.0.0.0"]);
+        let cli = Cli::parse_from(["tmonks", "--bind", "0.0.0.0"]);
         let err = cli.validate().unwrap_err();
         assert!(err.to_string().contains("loopback"));
         assert!(err.to_string().contains("SSH tunneling"));
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn rejects_no_auth_without_confirm() {
-        let cli = Cli::parse_from(["tmons", "--no-auth"]);
+        let cli = Cli::parse_from(["tmonks", "--no-auth"]);
         let err = cli.validate().unwrap_err();
         assert!(err.to_string().contains("--no-auth is dangerous"));
         assert!(err.to_string().contains("--i-understand-no-auth"));
@@ -112,19 +112,19 @@ mod tests {
 
     #[test]
     fn accepts_no_auth_with_confirm() {
-        let cli = Cli::parse_from(["tmons", "--no-auth", "--i-understand-no-auth"]);
+        let cli = Cli::parse_from(["tmonks", "--no-auth", "--i-understand-no-auth"]);
         cli.validate().unwrap();
     }
 
     #[test]
     fn accepts_loopback_bind() {
-        let cli = Cli::parse_from(["tmons", "--bind", "127.0.0.1"]);
+        let cli = Cli::parse_from(["tmonks", "--bind", "127.0.0.1"]);
         cli.validate().unwrap();
     }
 
     #[test]
     fn accepts_ipv6_loopback() {
-        let cli = Cli::parse_from(["tmons", "--bind", "::1"]);
+        let cli = Cli::parse_from(["tmonks", "--bind", "::1"]);
         cli.validate().unwrap();
     }
 

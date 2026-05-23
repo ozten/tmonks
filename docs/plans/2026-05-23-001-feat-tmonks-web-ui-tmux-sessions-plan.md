@@ -1,5 +1,5 @@
 ---
-title: "feat: tmons — Web UI for tmux sessions"
+title: "feat: tmonks — Web UI for tmux sessions"
 type: feat
 status: completed
 date: 2026-05-23
@@ -7,21 +7,21 @@ deepened: 2026-05-23
 completed: 2026-05-23
 ---
 
-# feat: tmons — Web UI for tmux sessions
+# feat: tmonks — Web UI for tmux sessions
 
 ## Overview
 
-`tmons` is a single Rust binary that launches a local web server exposing a browser-based UI for the user's tmux sessions. Open the URL on a phone or laptop, see a sidebar of sessions with status badges (idle / working / needs-input), click one to focus it, and interact with the live session through `xterm.js` — including native browser copy/paste, on-screen keys for iOS-hostile inputs (`Esc` / `Tab` / `Ctrl-C` / arrows), and full physical-keyboard passthrough.
+`tmonks` is a single Rust binary that launches a local web server exposing a browser-based UI for the user's tmux sessions. Open the URL on a phone or laptop, see a sidebar of sessions with status badges (idle / working / needs-input), click one to focus it, and interact with the live session through `xterm.js` — including native browser copy/paste, on-screen keys for iOS-hostile inputs (`Esc` / `Tab` / `Ctrl-C` / arrows), and full physical-keyboard passthrough.
 
 The MVP targets *agentic CLIs* specifically: `claude`, `codex`, and `opencode`. These render full-screen Ink/Bubble Tea TUIs with streaming text, spinners, and box-drawing. We need them to render faithfully and we need to detect their lifecycle states without modifying the CLIs themselves.
 
 ## Problem Frame
 
-Using tmux from a phone or shared device is miserable. Native tmux requires `Ctrl-b` chords, has user-hostile copy-mode keybindings, fights the terminal for mouse selection, and has no notion of "here is a glanceable status of every session." For a user who runs multiple coding agents in parallel across sessions, the friction of switching between them and knowing which is waiting for input is significant. `tmons` removes that friction by exposing tmux through a normal-feeling web UI while keeping native tmux untouched as the canonical store.
+Using tmux from a phone or shared device is miserable. Native tmux requires `Ctrl-b` chords, has user-hostile copy-mode keybindings, fights the terminal for mouse selection, and has no notion of "here is a glanceable status of every session." For a user who runs multiple coding agents in parallel across sessions, the friction of switching between them and knowing which is waiting for input is significant. `tmonks` removes that friction by exposing tmux through a normal-feeling web UI while keeping native tmux untouched as the canonical store.
 
 ## Requirements Trace
 
-- **R1.** Launch `tmons` from the CLI and get a URL that opens a working browser UI.
+- **R1.** Launch `tmonks` from the CLI and get a URL that opens a working browser UI.
 - **R2.** Sidebar lists every tmux session on the host; clicking a session focuses it.
 - **R3.** Focused pane shows the live tmux pane via `xterm.js`, including ANSI colors, spinners, streaming text, and alt-screen TUIs (Claude, Codex, opencode).
 - **R4.** Browser copy/paste works the normal way (click-drag, Cmd-C, Cmd-V, double-click word select, triple-click line, right-click menu, context-menu Copy). No tmux copy mode.
@@ -133,7 +133,7 @@ A search of `docs/solutions/` returned no relevant prior solutions for any of th
 - **Exact tmux version probe.** `tmux -V` at startup, refuse to start if < 3.4. Decision: do this; implementation detail is the parsing of the `tmux 3.5a`-style version string.
 - **Detection thresholds for spinner glyphs.** Distinguishing "spinner is animating" from "spinner glyph is just static in the last frame we captured" may require comparing two consecutive captures' spinner-row bytes for change. Will calibrate against real Claude/Codex/opencode sessions during the status unit.
 - **Two-tab input arbitration.** v1 behavior: both tabs send concurrently — user is responsible for not typing in both. tmux multi-client semantics handle this without corruption at the tmux layer, but keystrokes interleave. Roadmap option: a per-session "input lock" claimed by the most-recently-focused tab. Decision deferred until we know whether the cost matters in practice.
-- **Exact seed/live partition via sentinel marker (v2-for-non-alt-screen).** The MVP discards parked bytes between attach and seed `%end`, which is correct for alt-screen TUIs but lossy for plain shells / `tail -f`. v2 upgrade: issue a `display-message -p 'TMONS_SEED_BOUNDARY_<nonce>'` after `capture-pane`, partition parked events by their wire-order arrival index relative to the sentinel's `%begin` line, replay post-sentinel events as live. Defer until non-alt-screen panes are in scope.
+- **Exact seed/live partition via sentinel marker (v2-for-non-alt-screen).** The MVP discards parked bytes between attach and seed `%end`, which is correct for alt-screen TUIs but lossy for plain shells / `tail -f`. v2 upgrade: issue a `display-message -p 'TMONKS_SEED_BOUNDARY_<nonce>'` after `capture-pane`, partition parked events by their wire-order arrival index relative to the sentinel's `%begin` line, replay post-sentinel events as live. Defer until non-alt-screen panes are in scope.
 - **Push-driven status detection (v2-explore).** `refresh-client -B` subscriptions don't work for a single shared subscriber because tmux scopes subscription evaluation to the subscriber's own attached session. A workable push model would need one subscription-using control-mode child per *monitored* session. Evaluate when MVP polling load is measured against real usage.
 
 ## High-Level Technical Design
@@ -149,7 +149,7 @@ flowchart TB
     Browser <-->|"/ws/dashboard (JSON)"| DashWS[Dashboard WS Handler]
     Browser <-->|"/ws/pane/{id} (binary)"| PaneWS[Pane WS Handler]
 
-    subgraph Server [tmons Rust process]
+    subgraph Server [tmonks Rust process]
         Auth[Token + Host + Origin middleware]
         Static[rust-embed static assets]
         DashWS --> StatusLoop
@@ -239,14 +239,14 @@ Markers (heuristic, see [research](#external-references)):
 **Approach:**
 - Default bind to `127.0.0.1:0`. Print a single `Open: http://127.0.0.1:<port>/?t=<token>` to stdout at startup.
 - Generate the token with `rand::rng().fill_bytes(&mut [0u8; 32])` and base64-url-encode (no padding).
-- **Token-flow:** `GET /` with valid `?t=<token>` sets `tmons_session=<token>; HttpOnly; SameSite=Strict; Path=/` and returns `302 /` (tokenless). All subsequent HTTP routes and WS upgrades validate the cookie via `subtle::ConstantTimeEq`. The query-string path is the *only* way to obtain the cookie.
+- **Token-flow:** `GET /` with valid `?t=<token>` sets `tmonks_session=<token>; HttpOnly; SameSite=Strict; Path=/` and returns `302 /` (tokenless). All subsequent HTTP routes and WS upgrades validate the cookie via `subtle::ConstantTimeEq`. The query-string path is the *only* way to obtain the cookie.
 - **Host check:** parse `Host` header → split host/port → resolve host to `IpAddr` (accept literal `localhost` as a special case) → reject unless `is_loopback()` and `to_string()` matches one of the allowed forms after lowercasing and stripping trailing dot.
 - **Origin check (WS upgrade only):** require `Origin` host:port to match the server's bound socket address exactly. Reject missing Origin.
 - `tower::ServiceBuilder` middleware order: TraceLayer (with `?t=` field redaction) → Host check → Cookie check → Origin check (WS only).
 - **`--no-auth` guardrails:** refuse to start if `--no-auth` is passed without `--i-understand-no-auth`. Refuse if `--bind` resolves to a non-loopback address regardless of `--no-auth`. Print a multi-line stderr warning and delay startup by 3 seconds when `--no-auth` is active.
 - **`--bind 0.0.0.0` (or any non-loopback):** unsupported in MVP. Exit with a clear error directing the user to localhost binding + SSH tunneling.
 - **`--socket`:** if set, every `tmux` invocation across the binary passes `-L <socket>` as the first argument. Plumbed through a `TmuxConfig { socket: Option<String> }` carried in `AppState`. Validate the value at CLI parse against `^[A-Za-z0-9_-]{1,32}$` and reject anything else (closes flag-injection / path-traversal via crafted socket names). Argv passing via `Command::args` prevents shell escapes, but value-prefix checks remain necessary so an attacker-controlled value can't be a flag itself (`-Lhack`).
-- **Tracing:** `tracing_subscriber` with `EnvFilter` (default `tmons=info,warn`), `--verbose` overrides to `debug`. `?t=` and `cookie` header values are scrubbed from logged spans via a custom `MakeWriter`/field filter pair.
+- **Tracing:** `tracing_subscriber` with `EnvFilter` (default `tmonks=info,warn`), `--verbose` overrides to `debug`. `?t=` and `cookie` header values are scrubbed from logged spans via a custom `MakeWriter`/field filter pair.
 - **Graceful shutdown:** `tokio_util::sync::CancellationToken` cloned into every spawned task. `axum::serve(...).with_graceful_shutdown(token.cancelled())`. Per axum #3003, WebSocket tasks aren't tracked by axum's tracker — they `select!` on the token directly.
 - **CSP:** every served HTTP response (index, redirects, asset routes) sets `Content-Security-Policy: default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'` and `X-Frame-Options: DENY`.
 - **`GET /debug/state`** (cookie-auth required, same as `/`): returns JSON of `{ active_sessions: [{id, name, badge_state}], children: [{pid, session, channel_depth, last_event_ts}], pollers: [{session, last_poll_ms, error_count}], build: {version, commit} }`. Cheap to build, indispensable when something misbehaves.
@@ -266,10 +266,10 @@ Markers (heuristic, see [research](#external-references)):
 - Error path: `GET /` with `Host: LOCALHOST.` → 200 (case-insensitive + trailing dot stripped).
 - Error path: WS upgrade with `Origin: http://localhost:99999` (port mismatch) → 403.
 - Error path: WS upgrade with missing `Origin` → 403.
-- Error path: `tmons --no-auth` without `--i-understand-no-auth` → exit code 2 with helpful message.
-- Error path: `tmons --bind 0.0.0.0:8080` → exit code 2 with "unsupported, use SSH tunnel" message.
+- Error path: `tmonks --no-auth` without `--i-understand-no-auth` → exit code 2 with helpful message.
+- Error path: `tmonks --bind 0.0.0.0:8080` → exit code 2 with "unsupported, use SSH tunnel" message.
 - Edge case: `?t=` value is scrubbed from `tracing` access log (assert by inspecting captured logs in a `tracing_test` subscriber).
-- Edge case: `tmons --socket dev` forwards `-L dev` to every spawned `tmux` (verified via mock in this unit; integration in Unit 2).
+- Edge case: `tmonks --socket dev` forwards `-L dev` to every spawned `tmux` (verified via mock in this unit; integration in Unit 2).
 - Edge case: Embedded asset served with correct `Content-Type` and CSP header present on index.
 - Integration: SIGTERM during an active connection releases the WebSocket task within 2 s.
 
@@ -503,7 +503,7 @@ Markers (heuristic, see [research](#external-references)):
 - **Two cadences**:
   - `list-sessions` re-poll every **2 s**. On change (set diff): emit a fresh `sessions` frame; cancel pollers for disappeared sessions; spawn pollers for new ones.
   - `status-poller` (one tokio task per visible session): every **750 ms**, fork+exec `tmux <-L socket?> capture-pane -p -e -t %<active-pane> -S -5` (last 5 rows, escapes preserved). Pass the rendered text to `match_status(command, screen)`. Fork+exec is ~2-5 ms on Linux × N=3-10 sessions = under 1 % of one CPU, well within budget.
-- **Compile-in matchers + CLI version probe**: matchers live in `src/status/matchers.rs` as code with calibration version comments. At server startup, probe `claude --version`, `codex --version`, `opencode --version` (each as a one-shot subprocess with a 500 ms timeout) and log `calibrated=<version> detected=<version>` per CLI. Mismatch logs at `warn`. No SIGHUP reload, no TOML override — when a CLI changes, ship a new tmons release with updated matchers + new fixtures.
+- **Compile-in matchers + CLI version probe**: matchers live in `src/status/matchers.rs` as code with calibration version comments. At server startup, probe `claude --version`, `codex --version`, `opencode --version` (each as a one-shot subprocess with a 500 ms timeout) and log `calibrated=<version> detected=<version>` per CLI. Mismatch logs at `warn`. No SIGHUP reload, no TOML override — when a CLI changes, ship a new tmonks release with updated matchers + new fixtures.
 - **Matcher rules** (compile-in, with calibration version per CLI commented in source):
   - `claude` (calibrated against 2.x): `"esc to interrupt"` (case-insensitive) → `Working`; `"Do you want to proceed"` or numbered options `❯ 1.` → `NeedsInput`; `"waiting for your input"` → `IdleNotify`; else → `Idle`.
   - `codex` (calibrated against 0.x): `"Press Esc to interrupt"` → `Working`; else → `Idle`.
@@ -675,12 +675,12 @@ Markers (heuristic, see [research](#external-references)):
 - **Interaction graph:** per browser tab — dashboard WS handler (1), pane WS handler (0 or 1 depending on focus), N status pollers (one per visible session). Per process — a single shared `CancellationToken`, a list-sessions loop, and an HTTP server. Pollers are independently spawned `tokio::task`s; they `try_send` to the dashboard channel and drop on `Full` to avoid forming a cross-session backpressure chain. The dashboard handler drains the channel in its `select!`.
 - **Error propagation:** any tmux child failure surfaces as `ControlEvent::Exit` → the pane WS handler closes with 1011 + a JSON reason. `%client-detached` and `%exit` are treated as terminal. Status-poller failures log at `warn`, switch the badge to `unknown`, and after 5 consecutive failures emit a `{type:"error", session_id, message}` frame on the dashboard channel for inline UI display. Errors never crash a task — they degrade gracefully.
 - **State lifecycle risks:** `tokio::process::Child::kill_on_drop(true)` is the backstop, but every shutdown path **must** send `detach-client` first to let tmux flush. The single cancellation token plumbed through Unit 8 fires the supervisor's graceful-shutdown path (`detach-client` → wait 2 s → `start_kill`), **not** a bare `Child::drop`. Skipping the detach leaves tmux client objects lingering for ~30 s and shows as ghosts in `tmux list-clients`.
-- **API surface parity:** None. tmons is one-way client into tmux — tmux remains the canonical store. No webhook, no callback, no scheduled job. No external network traffic.
+- **API surface parity:** None. tmonks is one-way client into tmux — tmux remains the canonical store. No webhook, no callback, no scheduled job. No external network traffic.
 - **Integration coverage:** the control-mode parser, the VT filter (outbound + inbound), and the status matchers are the three subsystems where unit tests are *not* sufficient. Each needs at least one integration test against a real tmux server. Matchers need recorded fixtures of real `claude`/`codex`/`opencode` screen states (commit them under `tests/fixtures/`).
-- **Two-tab same-session behavior:** tmons spawns one control-mode child per tab. Keystrokes from both tabs interleave at tmux level (tmux multi-client semantics; no corruption, but no arbitration). Document in README and Risks.
+- **Two-tab same-session behavior:** tmonks spawns one control-mode child per tab. Keystrokes from both tabs interleave at tmux level (tmux multi-client semantics; no corruption, but no arbitration). Document in README and Risks.
 - **Status matcher lifecycle:** matchers are compile-in. At server startup, `<cli> --version` probes log a `WARN` if the detected version differs from the matcher's calibration version. Fixture-based regression suites (`tests/fixtures/<cli>/<version>/*.txt`) gate matcher changes in CI.
 - **Tmux socket selection:** every `tmux` subprocess (control-mode attach, list-sessions, capture-pane, display-message) honors `--socket` via `-L <name>`. Without `--socket`, the default socket is used, which respects the `TMUX` env var.
-- **Unchanged invariants:** this change does not modify the user's tmux installation, config, sessions, or running processes. `tmons` only attaches as a client; detaching is a no-op. Removing `tmons` from the box leaves no traces.
+- **Unchanged invariants:** this change does not modify the user's tmux installation, config, sessions, or running processes. `tmonks` only attaches as a client; detaching is a no-op. Removing `tmonks` from the box leaves no traces.
 
 ## Risks & Dependencies
 
@@ -704,17 +704,17 @@ Markers (heuristic, see [research](#external-references)):
 | **Empty-state confusion** — fresh box with no tmux server | Dashboard handles `no server running` as empty-state; UI shows copy-pasteable `tmux new` snippet. |
 | **`xterm.js` v6 selection cleared during rapid screen updates** | Documented as known UX nuance; mitigation roadmap is "pause forwarding on selection start." |
 | **Resize-mid-redraw visual artifacts** | Client-side 100 ms **trailing** debounce on resize WS frames (resize fires after window-drag settles, not at the start). Documented as expected — TUI redraws on next tick after `SIGWINCH`. |
-| **`refresh-client -C` resizes pane for all attached clients** — including a native tmux client on a larger terminal. tmons connected from a phone shrinks the pane for everyone. | Document prominently in README. Recommend `window-size manual` in user's `.tmux.conf` or `set-window-option aggressive-resize on` for users who attach multiple clients with different sizes. Roadmap: opt-in `--no-resize` to skip `refresh-client -C` entirely (accept whatever tmux gives us). |
+| **`refresh-client -C` resizes pane for all attached clients** — including a native tmux client on a larger terminal. tmonks connected from a phone shrinks the pane for everyone. | Document prominently in README. Recommend `window-size manual` in user's `.tmux.conf` or `set-window-option aggressive-resize on` for users who attach multiple clients with different sizes. Roadmap: opt-in `--no-resize` to skip `refresh-client -C` entirely (accept whatever tmux gives us). |
 
 ## Documentation / Operational Notes
 
 - README expansion to cover:
-  - Install (`cargo install tmons` once published), launch (`tmons` prints URL), `--socket` / `--verbose` flags.
+  - Install (`cargo install tmonks` once published), launch (`tmonks` prints URL), `--socket` / `--verbose` flags.
   - Required tmux ≥ 3.4. Browser compatibility (Chrome / Safari / Firefox; iOS Safari with the known mobile caveats; Android WebView limitations).
   - Security model: cookie-after-redirect token, Host allowlist, Origin check, localhost-only default. Explicit "expose this URL = expose your shell" warning.
-  - Threat model and what tmons does **not** defend against (compromised host, malicious tmux config, supply-chain attacks on dependencies).
+  - Threat model and what tmonks does **not** defend against (compromised host, malicious tmux config, supply-chain attacks on dependencies).
   - "Two browser tabs on the same session interleave keystrokes — don't type in both at once."
-  - **Multi-client resize behavior:** "When tmons attaches to a session that also has a native tmux client attached, `refresh-client -C` will resize the pane to match whichever attached client is smallest. Recommend `set-window-option aggressive-resize on` or `window-size manual` if this is problematic for your workflow."
+  - **Multi-client resize behavior:** "When tmonks attaches to a session that also has a native tmux client attached, `refresh-client -C` will resize the pane to match whichever attached client is smallest. Recommend `set-window-option aggressive-resize on` or `window-size manual` if this is problematic for your workflow."
   - Supported agent CLIs and their calibration versions; how to file an issue when a new CLI release breaks status detection.
   - "Tunnel to a remote box: `ssh -L 8080:127.0.0.1:<port> remote`, then open `http://127.0.0.1:8080/?t=<token>` locally."
 - `/debug/state` endpoint documented (cookie-auth, same as `/`) for diagnostics.

@@ -56,7 +56,7 @@ impl BuildInfo {
     pub fn from_env() -> Self {
         Self {
             version: env!("CARGO_PKG_VERSION"),
-            commit: option_env!("TMONS_GIT_COMMIT").unwrap_or("unknown"),
+            commit: option_env!("TMONKS_GIT_COMMIT").unwrap_or("unknown"),
         }
     }
 }
@@ -105,7 +105,7 @@ pub fn router(state: AppState) -> Router {
 /// back to the URI path component only.
 ///
 /// Why this exists: the token is single-use-ish but anyone with stderr access
-/// to tmons can replay it. Cookie auth + a leaked token = persistent shell.
+/// to tmonks can replay it. Cookie auth + a leaked token = persistent shell.
 #[derive(Clone, Debug)]
 struct QueryRedactingMakeSpan;
 

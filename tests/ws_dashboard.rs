@@ -10,9 +10,9 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use tmons::status::matchers::Status;
-use tmons::status::poller::{self, PollerEvent};
-use tmons::tmux::TmuxConfig;
+use tmonks::status::matchers::Status;
+use tmonks::status::poller::{self, PollerEvent};
+use tmonks::tmux::TmuxConfig;
 
 fn tmux_available() -> bool {
     std::process::Command::new("tmux")
@@ -33,7 +33,7 @@ impl Fixture {
     async fn start(session_name: &str) -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let socket = format!("tmons-dash-{}-{}", std::process::id(), n);
+        let socket = format!("tmonks-dash-{}-{}", std::process::id(), n);
         let config = TmuxConfig {
             socket: Some(socket.clone()),
             binary: Some(PathBuf::from("tmux")),
@@ -68,7 +68,7 @@ async fn list_sessions_empty_when_no_server() {
     }
     // Use a socket that has no server running.
     let config = TmuxConfig {
-        socket: Some(format!("tmons-no-server-{}", std::process::id())),
+        socket: Some(format!("tmonks-no-server-{}", std::process::id())),
         binary: Some(PathBuf::from("tmux")),
     };
     let result = poller::list_sessions(&config).await.unwrap();

@@ -1,6 +1,6 @@
 //! HTTP integration tests for Unit 1 auth flow.
 //!
-//! We spin up the real `tmons::server::router(...)` with a known token and
+//! We spin up the real `tmonks::server::router(...)` with a known token and
 //! drive it via `tower::ServiceExt::oneshot` so we don't need a real socket.
 
 use std::net::SocketAddr;
@@ -12,7 +12,7 @@ use http_body_util::BodyExt;
 use tokio_util::sync::CancellationToken;
 use tower::ServiceExt;
 
-use tmons::{
+use tmonks::{
     AppState, Token, COOKIE_NAME, router,
 };
 
@@ -24,7 +24,7 @@ fn make_state(token: Token, no_auth: bool) -> AppState {
         socket: None,
         bound_addr: addr,
         shutdown: CancellationToken::new(),
-        build_info: tmons::BuildInfo {
+        build_info: tmonks::BuildInfo {
             version: "test",
             commit: "test",
         },
@@ -122,7 +122,7 @@ async fn index_with_valid_cookie_returns_html_and_csp() {
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let body = std::str::from_utf8(&body).unwrap();
-    assert!(body.contains("<title>tmons</title>"));
+    assert!(body.contains("<title>tmonks</title>"));
     assert!(body.contains("/assets/main.js"));
     assert!(body.contains("/assets/vendor/xterm.css"));
 }

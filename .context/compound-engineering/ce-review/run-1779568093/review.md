@@ -5,7 +5,7 @@
 - Branch: `main` (8 commits ahead of `origin/main`)
 - Files changed: 51
 - Diff lines: 10,067
-- Plan: `docs/plans/2026-05-23-001-feat-tmons-web-ui-tmux-sessions-plan.md` (explicit, all 8 implementation units)
+- Plan: `docs/plans/2026-05-23-001-feat-tmonks-web-ui-tmux-sessions-plan.md` (explicit, all 8 implementation units)
 
 ## Reviewer team (10 of 11 returned)
 - always-on: correctness, security, testing, maintainability, project-standards, agent-native, learnings-researcher

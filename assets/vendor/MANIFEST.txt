@@ -1,4 +1,4 @@
-# tmons vendored frontend assets
+# tmonks vendored frontend assets
 # Format: <file> <upstream-package>@<version> <sha256>
 
 xterm.mjs @xterm/xterm@6.0.0 b336ec65a086c056d4804b3d4c2347da5663d3f23c3f25be866467bd8857ad59

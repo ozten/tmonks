@@ -4,7 +4,7 @@
 //! a fixture + bumping the calibration version is the dev workflow when a CLI
 //! changes its marker text.
 
-use tmons::status::matchers::{Status, match_status};
+use tmonks::status::matchers::{Status, match_status};
 
 fn fixture(cli: &str, state: &str) -> String {
     let path = format!("tests/fixtures/{cli}/{state}.txt");
@@ -88,7 +88,7 @@ fn opencode_idle_fixture() {
 
 #[test]
 fn version_probe_compatibility_check() {
-    use tmons::status::version_probe::version_compatible;
+    use tmonks::status::version_probe::version_compatible;
     assert!(version_compatible("2.x", "claude-code 2.5.0"));
     assert!(!version_compatible("2.x", "claude-code 3.0.0"));
 }

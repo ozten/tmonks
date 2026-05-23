@@ -14,7 +14,7 @@ pub fn index_page() -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
                 meta name="color-scheme" content="dark light";
-                title { "tmons" }
+                title { "tmonks" }
                 link rel="stylesheet" href="/assets/vendor/xterm.css";
                 link rel="stylesheet" href="/assets/main.css";
                 // No favicon: avoid the 404 noise without inviting CSP gymnastics.
@@ -24,7 +24,7 @@ pub fn index_page() -> Markup {
                 div #app {
                     aside #sidebar {
                         header {
-                            h1 { "tmons" }
+                            h1 { "tmonks" }
                             button #sidebar-toggle aria-label="Toggle sidebar" { "☰" }
                         }
                         ul #session-list aria-live="polite" aria-label="tmux sessions" {

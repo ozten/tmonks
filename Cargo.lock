@@ -1361,7 +1361,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tmons"
+name = "tmonks"
 version = "0.1.0"
 dependencies = [
  "anyhow",

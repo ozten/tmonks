@@ -17,9 +17,9 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
-use tmons::tmux::commands;
-use tmons::tmux::events::ControlEvent;
-use tmons::tmux::{TmuxConfig, connect, probe_version};
+use tmonks::tmux::commands;
+use tmonks::tmux::events::ControlEvent;
+use tmonks::tmux::{TmuxConfig, connect, probe_version};
 
 fn tmux_available() -> bool {
     std::process::Command::new("tmux")
@@ -49,7 +49,7 @@ impl TmuxFixture {
         // socket name being unique per fixture (cargo test runs tests in
         // parallel within the same process). Don't set TMUX_TMPDIR — it's a
         // process-global env var and would race with other fixtures.
-        let socket = format!("tmons-test-{}-{}", std::process::id(), n);
+        let socket = format!("tmonks-test-{}-{}", std::process::id(), n);
         let config = TmuxConfig {
             socket: Some(socket.clone()),
             binary: Some(PathBuf::from("tmux")),
