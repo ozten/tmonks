@@ -19,7 +19,7 @@ use anyhow::{Context, Result};
 use axum::{
     Json, Router,
     body::Body,
-    extract::{Query, State},
+    extract::{MatchedPath, Query, Request, State},
     http::{Method, Response, StatusCode, Uri, header},
     middleware,
     response::IntoResponse,
@@ -27,7 +27,7 @@ use axum::{
 };
 use tokio_util::sync::CancellationToken;
 use tower::ServiceBuilder;
-use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, TraceLayer};
+use tower_http::trace::{MakeSpan, TraceLayer};
 
 use crate::assets::{self, apply_security_headers};
 use crate::auth::{self, Token, TokenQuery};
@@ -90,21 +90,42 @@ pub fn router(state: AppState) -> Router {
         .route("/ws/pane/{session_id}", get(crate::ws_pane::ws_pane_handler))
         .layer(
             ServiceBuilder::new()
-                .layer(
-                    TraceLayer::new_for_http()
-                        .make_span_with(DefaultMakeSpan::new().level(tracing::Level::INFO))
-                        .on_request(DefaultOnRequest::new().level(tracing::Level::DEBUG))
-                        // We do NOT call `.on_response()` with header-emitting defaults,
-                        // and we never log query strings. The `Uri` debug impl in spans
-                        // would include `?t=…`, so we suppress it via the request hook.
-                        ,
-                )
+                .layer(TraceLayer::new_for_http().make_span_with(QueryRedactingMakeSpan))
                 .layer(middleware::from_fn_with_state(
                     state.clone(),
                     auth::auth_middleware,
                 )),
         )
         .with_state(state)
+}
+
+/// `MakeSpan` that records the request without exposing the query string in
+/// any logged field. tower-http's `DefaultMakeSpan` emits the full URI
+/// (including `?t=<token>`); we use the matched route path instead, falling
+/// back to the URI path component only.
+///
+/// Why this exists: the token is single-use-ish but anyone with stderr access
+/// to tmons can replay it. Cookie auth + a leaked token = persistent shell.
+#[derive(Clone, Debug)]
+struct QueryRedactingMakeSpan;
+
+impl<B> MakeSpan<B> for QueryRedactingMakeSpan {
+    fn make_span(&mut self, request: &Request<B>) -> tracing::Span {
+        let method = request.method();
+        let route = request
+            .extensions()
+            .get::<MatchedPath>()
+            .map(MatchedPath::as_str)
+            .unwrap_or(request.uri().path());
+        // Note: explicitly do NOT include the full Uri here — that would leak
+        // `?t=<token>`. We record only the matched route (or path component).
+        tracing::info_span!(
+            "http_request",
+            method = %method,
+            route = %route,
+            version = ?request.version(),
+        )
+    }
 }
 
 async fn root(

@@ -312,6 +312,28 @@ async fn debug_state_returns_json() {
 }
 
 #[tokio::test]
+#[tracing_test::traced_test]
+async fn token_not_logged_in_tracing_spans() {
+    let token = Token::new_random().unwrap();
+    let encoded = token.encoded();
+    let state = make_state(token, false);
+
+    let app = router(state);
+    let response = app
+        .oneshot(req(Method::GET, &format!("/?t={encoded}")))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FOUND);
+
+    // The captured traces must not contain the token value anywhere. Both
+    // the span fields (route/method) and any nested events.
+    assert!(
+        !logs_contain(&encoded),
+        "raw token leaked into tracing output: {encoded}"
+    );
+}
+
+#[tokio::test]
 async fn debug_state_requires_cookie() {
     let token = Token::new_random().unwrap();
     let state = make_state(token, false);

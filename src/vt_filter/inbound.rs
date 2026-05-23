@@ -8,24 +8,45 @@
 //! We specifically drop:
 //!
 //!   * **DCS / APC / SOS / PM** — these have caused CVEs in tmux, less, vim.
-//!     We don't forward them at all.
+//!     We don't forward them at all (Perform `hook`/`put`/`unhook` are no-ops).
 //!   * **OSC 52** — the page should not be able to inject a clipboard write
 //!     into the user's shell via tmux.
-//!   * **Sequences longer than [`MAX_SEQUENCE_BYTES`]** — defends against
-//!     OOM / amplification attacks via giant CSI/OSC payloads.
+//!   * **Other OSC** — the browser has no reason to send OSC at all.
+//!   * **Oversized chunks** — we hard-cap any single inbound frame at
+//!     [`MAX_INBOUND_CHUNK_BYTES`]. vte enforces tighter bounds internally
+//!     (`MAX_OSC_RAW = 1024`, `MAX_PARAMS = 32`), so a sequence cap is
+//!     redundant; the chunk cap defends against amplification at the
+//!     framing layer instead.
 
 use std::fmt::Write as _;
 
 use vte::{Params, Parser, Perform};
 
-/// Per-sequence byte cap. Anything larger gets dropped with a `tracing::warn!`.
-pub const MAX_SEQUENCE_BYTES: usize = 4096;
+/// Per-call byte cap on inbound chunks. Browser keystrokes are tiny; a single
+/// frame exceeding 4 KiB is anomalous and likely an attempt to amplify or
+/// stress the parser. We drop the chunk wholesale and log a `warn!`.
+///
+/// Note: vte's internal limits already cap individual escape sequences
+/// (`MAX_OSC_RAW` = 1024 bytes, `MAX_PARAMS` = 32 numeric params), so a
+/// per-sequence cap on top would be redundant. The chunk cap below is the
+/// defense the inbound filter actually provides.
+pub const MAX_INBOUND_CHUNK_BYTES: usize = 4096;
 
 /// Run `input` through the inbound filter and return the cleaned bytes.
 ///
 /// This is the most common entry point — Unit 4 calls it once per inbound
 /// browser-stdin frame, which is small (a few bytes per keystroke).
+///
+/// If `input` exceeds [`MAX_INBOUND_CHUNK_BYTES`], the entire chunk is
+/// dropped and an empty vec is returned.
 pub fn filter(input: &[u8]) -> Vec<u8> {
+    if input.len() > MAX_INBOUND_CHUNK_BYTES {
+        tracing::warn!(
+            chunk_len = input.len(),
+            "drop inbound frame: exceeds {MAX_INBOUND_CHUNK_BYTES} bytes"
+        );
+        return Vec::new();
+    }
     let mut perform = InboundFilter::new();
     let mut parser: Parser = Parser::default();
     parser.advance(&mut perform, input);
@@ -34,9 +55,6 @@ pub fn filter(input: &[u8]) -> Vec<u8> {
 
 pub struct InboundFilter {
     out: Vec<u8>,
-    /// Bytes accumulated for the current sequence (CSI/OSC). Reset on
-    /// dispatch.
-    seq_len: usize,
 }
 
 impl Default for InboundFilter {
@@ -49,26 +67,11 @@ impl InboundFilter {
     pub fn new() -> Self {
         Self {
             out: Vec::with_capacity(256),
-            seq_len: 0,
         }
     }
 
     pub fn take(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.out)
-    }
-
-    fn over_limit(&mut self) -> bool {
-        if self.seq_len > MAX_SEQUENCE_BYTES {
-            tracing::warn!(
-                seq_len = self.seq_len,
-                "drop inbound CSI/OSC: exceeds {MAX_SEQUENCE_BYTES} bytes"
-            );
-            self.seq_len = 0;
-            true
-        } else {
-            self.seq_len = 0;
-            false
-        }
     }
 }
 
@@ -94,9 +97,6 @@ impl Perform for InboundFilter {
     fn unhook(&mut self) {}
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
-        if self.over_limit() {
-            return;
-        }
         if params.is_empty() {
             return;
         }
@@ -114,7 +114,7 @@ impl Perform for InboundFilter {
     }
 
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char) {
-        if self.over_limit() || ignore {
+        if ignore {
             return;
         }
 

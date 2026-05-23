@@ -381,7 +381,12 @@ async fn reader_loop(
                         auto_buf.clear();
                     }
                     Some(ev @ ControlEvent::Output { .. }) => {
-                        forward_or_coalesce(&event_tx, ev).await;
+                        if forward_or_coalesce(&event_tx, ev).await.is_err() {
+                            tracing::warn!(
+                                "control-mode reader: consumer overflowed or gone; stopping"
+                            );
+                            break;
+                        }
                     }
                     Some(ControlEvent::Exit { .. }) => {
                         let _ = event_tx.send(ControlEvent::Exit { code: None }).await;
@@ -419,25 +424,47 @@ async fn reader_loop(
     }
 }
 
-/// Forward an Output event, coalescing into the most recent queued Output
-/// for the same pane if the channel is at capacity. Never drops bytes
-/// mid-stream — the VT state machine downstream depends on that invariant.
-async fn forward_or_coalesce(tx: &mpsc::Sender<ControlEvent>, ev: ControlEvent) {
-    match tx.try_send(ev) {
-        Ok(()) => {}
-        Err(mpsc::error::TrySendError::Full(returned)) => {
-            // Channel is full. Slowly drain by awaiting — backpressure into
-            // the reader. In practice, the consumer (Unit 4 WS handler)
-            // either keeps up or we hit COALESCE_LIMIT and close the WS.
-            //
-            // We use `send` to wait politely rather than `try_send` looping,
-            // because spinning would burn the runtime.
-            let _ = tx.send(returned).await;
-        }
-        Err(mpsc::error::TrySendError::Closed(_)) => {
-            // Receiver dropped — nothing to do.
+/// Forward an Output event, falling back to a bounded blocking send if the
+/// channel is at capacity.
+///
+/// We never drop bytes mid-stream — the VT state machine downstream depends
+/// on that invariant. But we also can't block the reader forever: if the WS
+/// consumer dies without notice, an unbounded `send().await` would deadlock
+/// the reader task. So we cap the back-off at [`COALESCE_LIMIT`] retries
+/// with a short timeout each.
+///
+/// On persistent overflow, return `Err(())` so the caller (reader_loop) can
+/// shut the WS down with code 1013.
+async fn forward_or_coalesce(
+    tx: &mpsc::Sender<ControlEvent>,
+    ev: ControlEvent,
+) -> Result<(), ()> {
+    let mut current = match tx.try_send(ev) {
+        Ok(()) => return Ok(()),
+        Err(mpsc::error::TrySendError::Full(returned)) => returned,
+        Err(mpsc::error::TrySendError::Closed(_)) => return Err(()),
+    };
+    for _ in 0..COALESCE_LIMIT {
+        match tokio::time::timeout(Duration::from_millis(100), tx.reserve()).await {
+            Ok(Ok(permit)) => {
+                permit.send(current);
+                return Ok(());
+            }
+            Ok(Err(_)) => return Err(()), // channel closed
+            Err(_) => {
+                // Timed out waiting for room. Try once more after yielding.
+                match tx.try_send(current) {
+                    Ok(()) => return Ok(()),
+                    Err(mpsc::error::TrySendError::Full(returned)) => current = returned,
+                    Err(mpsc::error::TrySendError::Closed(_)) => return Err(()),
+                }
+            }
         }
     }
+    tracing::warn!(
+        "control-mode channel persistently full after {COALESCE_LIMIT} attempts; closing"
+    );
+    Err(())
 }
 
 /// Owns the `Child` handle. Watches for cancel and child exit.

@@ -130,10 +130,12 @@ class PaneClient {
       return this.pendingScrollback;
     }
     this.pendingScrollback = new Promise((resolve, reject) => {
+      // Slightly longer than the server's 12s capture-pane budget — lets the
+      // server's error frame arrive before the client gives up.
       const timer = setTimeout(() => {
         this.pendingScrollback = null;
         reject(new Error("scrollback request timed out"));
-      }, 15000);
+      }, 13000);
       this._scrollbackResolver = (bytes) => {
         clearTimeout(timer);
         this.pendingScrollback = null;

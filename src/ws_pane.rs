@@ -214,32 +214,32 @@ async fn run_pane_session(
                                 }
                                 TAG_REQUEST_SCROLLBACK => {
                                     let pane = active_pane_for_inbound_writer.lock().await.clone();
+                                    // 12s server-side budget; client expires at 15s — see assets/main.js.
                                     let result = cm_writer
                                         .send_command_with_timeout(
                                             tcmd::capture_pane_all(&pane),
-                                            Duration::from_secs(10),
+                                            Duration::from_secs(12),
                                         )
                                         .await;
-                                    let bytes = match result {
-                                        Ok(mut b) => {
-                                            if b.len() > SCROLLBACK_MAX {
-                                                let marker = format!(
-                                                    "[scrollback truncated to last {} MiB]\n",
-                                                    SCROLLBACK_MAX / (1024 * 1024)
-                                                );
-                                                let keep = b.len() - SCROLLBACK_MAX + marker.len();
-                                                b.drain(..keep);
-                                                let mut prefixed = marker.into_bytes();
-                                                prefixed.extend_from_slice(&b);
-                                                prefixed
-                                            } else {
-                                                b
-                                            }
+                                    match result {
+                                        Ok(b) => {
+                                            let bytes = cap_scrollback(b);
+                                            let frame = build_frame(TAG_SCROLLBACK_RESPONSE, &bytes);
+                                            let _ = ws_outbound_tx
+                                                .send(Message::Binary(frame.into()))
+                                                .await;
                                         }
-                                        Err(_) => Vec::new(),
-                                    };
-                                    let frame = build_frame(TAG_SCROLLBACK_RESPONSE, &bytes);
-                                    let _ = ws_outbound_tx.send(Message::Binary(frame.into())).await;
+                                        Err(e) => {
+                                            // Surface explicitly rather than sending an empty
+                                            // scrollback frame the client would render as a
+                                            // successful copy of nothing.
+                                            let _ = ws_outbound_tx
+                                                .send(json_text(json!({
+                                                    "err": format!("scrollback failed: {e:#}"),
+                                                })))
+                                                .await;
+                                        }
+                                    }
                                 }
                                 _ => {
                                     tracing::debug!(tag = format!("0x{:02x}", tag), "unknown inbound tag");
@@ -333,6 +333,29 @@ fn build_frame(tag: u8, payload: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Truncate `bytes` to fit within [`SCROLLBACK_MAX`], including the leading
+/// truncation marker. Returns the input unchanged if it already fits.
+///
+/// Invariant: the returned vec is always ≤ `SCROLLBACK_MAX` bytes.
+fn cap_scrollback(mut bytes: Vec<u8>) -> Vec<u8> {
+    if bytes.len() <= SCROLLBACK_MAX {
+        return bytes;
+    }
+    let marker = format!(
+        "[scrollback truncated to last {} MiB]\n",
+        SCROLLBACK_MAX / (1024 * 1024)
+    );
+    let marker_bytes = marker.into_bytes();
+    // Keep only the tail that fits alongside the marker.
+    let keep = SCROLLBACK_MAX.saturating_sub(marker_bytes.len());
+    let drop_count = bytes.len() - keep;
+    bytes.drain(..drop_count);
+    let mut out = Vec::with_capacity(marker_bytes.len() + bytes.len());
+    out.extend_from_slice(&marker_bytes);
+    out.extend_from_slice(&bytes);
+    out
+}
+
 fn json_text(v: serde_json::Value) -> Message {
     Message::Text(Utf8Bytes::from(v.to_string()))
 }
@@ -387,5 +410,38 @@ mod tests {
     fn build_frame_empty_payload() {
         let frame = build_frame(0x12, &[]);
         assert_eq!(frame, vec![0x12]);
+    }
+
+    #[test]
+    fn cap_scrollback_passes_short_payload_unchanged() {
+        let input = b"hello world".to_vec();
+        let out = cap_scrollback(input.clone());
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn cap_scrollback_passes_exactly_max() {
+        let input = vec![b'x'; SCROLLBACK_MAX];
+        let out = cap_scrollback(input.clone());
+        assert_eq!(out.len(), SCROLLBACK_MAX);
+        assert_eq!(out, input);
+    }
+
+    #[test]
+    fn cap_scrollback_truncates_oversize_and_prepends_marker() {
+        // 1 KiB over the cap.
+        let input = vec![b'x'; SCROLLBACK_MAX + 1024];
+        let out = cap_scrollback(input);
+        // Final size must never exceed the cap.
+        assert!(out.len() <= SCROLLBACK_MAX, "got {} bytes", out.len());
+        assert!(out.starts_with(b"[scrollback truncated"));
+        assert!(out.ends_with(b"x"));
+    }
+
+    #[test]
+    fn cap_scrollback_truncates_at_exact_boundary_plus_one() {
+        let input = vec![b'x'; SCROLLBACK_MAX + 1];
+        let out = cap_scrollback(input);
+        assert!(out.len() <= SCROLLBACK_MAX);
     }
 }

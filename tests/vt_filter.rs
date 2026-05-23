@@ -279,26 +279,19 @@ fn inbound_drops_other_osc() {
 }
 
 #[test]
-fn inbound_handles_huge_sequence() {
-    // 8 KiB CSI sequence: ESC [ <8k chars> m
-    let mut input = b"\x1b[".to_vec();
-    for _ in 0..8192 {
-        input.push(b'1');
-        input.push(b';');
-    }
-    input.extend_from_slice(b"m");
-    input.extend_from_slice(b"\x1b[31m"); // followed by a valid SGR
+fn inbound_drops_oversized_chunk() {
+    // 8 KiB inbound chunk: above MAX_INBOUND_CHUNK_BYTES (4 KiB). Entire chunk
+    // is dropped, returning empty bytes.
+    let input = vec![b'a'; 8 * 1024];
+    assert_eq!(inb(&input), b"", "oversized chunk should be dropped wholesale");
+}
 
-    // After the dropped huge sequence, the valid one should still be
-    // forwarded.
+#[test]
+fn inbound_accepts_chunks_under_cap() {
+    // A chunk just under MAX_INBOUND_CHUNK_BYTES passes through.
+    let input = vec![b'a'; tmons::vt_filter::inbound::MAX_INBOUND_CHUNK_BYTES - 1];
     let result = inb(&input);
-    // Note: vte's MAX_OSC_RAW / param limits may also cap things below 4 KiB
-    // already; we just check that subsequent valid input parses.
-    assert!(
-        result.windows(5).any(|w| w == b"\x1b[31m"),
-        "subsequent valid CSI lost: {:?}",
-        String::from_utf8_lossy(&result)
-    );
+    assert_eq!(result.len(), input.len());
 }
 
 #[test]

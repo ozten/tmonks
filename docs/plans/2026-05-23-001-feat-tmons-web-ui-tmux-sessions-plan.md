@@ -1,9 +1,10 @@
 ---
 title: "feat: tmons — Web UI for tmux sessions"
 type: feat
-status: active
+status: completed
 date: 2026-05-23
 deepened: 2026-05-23
+completed: 2026-05-23
 ---
 
 # feat: tmons — Web UI for tmux sessions
@@ -212,7 +213,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ## Implementation Units
 
-- [ ] **Unit 1: Project scaffold, Axum server, auth, observability, static asset embedding**
+- [x] **Unit 1: Project scaffold, Axum server, auth, observability, static asset embedding**
 
 **Goal:** Establish the binary's skeleton: parse CLI args, set up tracing, start an Axum server, serve the index page and embedded JS/CSS, gate every request on token-cookie + Host + Origin checks. Loading `http://127.0.0.1:<port>/?t=<token>` issues a cookie, redirects to `/`, and returns the index with `xterm.js` mounted but not yet connected.
 
@@ -278,7 +279,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 2: tmux control-mode subprocess driver**
+- [x] **Unit 2: tmux control-mode subprocess driver**
 
 **Goal:** A Rust module that owns the lifecycle of a `tmux -CC attach -t <session>` child process, parses its line-based protocol into typed events, and exposes a clean async API: `connect(session)` returns `(EventStream, CommandSender)`.
 
@@ -327,7 +328,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 3: VT filter (outbound allowlist + inbound deny)**
+- [x] **Unit 3: VT filter (outbound allowlist + inbound deny)**
 
 **Goal:** Two `vte::Perform` implementors. The **outbound filter** consumes raw bytes from `%output` events and re-emits only a defined allowlist of actions — neutralizing mouse reporting, clipboard hijacks (OSC 52), `javascript:` hyperlinks (OSC 8), and arbitrary DCS/APC. The **inbound filter** processes browser-originated keystrokes and drops dangerous categories before they reach tmux.
 
@@ -415,7 +416,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 4: Focused-pane WebSocket — `/ws/pane/{session_id}`**
+- [x] **Unit 4: Focused-pane WebSocket — `/ws/pane/{session_id}`**
 
 **Goal:** Wire the end-to-end byte pipeline for the focused pane: WebSocket connect → spawn control-mode child → capture initial scrollback → stream live output through VT filter → forward keystrokes back. The browser renders bytes via `xterm.js`.
 
@@ -476,7 +477,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 5: Dashboard WebSocket — `/ws/dashboard`, session list, status detection**
+- [x] **Unit 5: Dashboard WebSocket — `/ws/dashboard`, session list, status detection**
 
 **Goal:** Power the sidebar. Send the initial session list, push updates as sessions appear/disappear, and poll each visible session's active pane for a status badge value.
 
@@ -544,7 +545,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 6: Frontend chrome — sidebar + focused pane layout, mobile responsive**
+- [x] **Unit 6: Frontend chrome — sidebar + focused pane layout, mobile responsive**
 
 **Goal:** A presentable single-page UI: sidebar on the left with session list and status badges, main content area with the focused-pane `xterm.js`. Responsive: stacks to a drawer pattern at phone widths.
 
@@ -584,7 +585,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 7: Input + clipboard polish**
+- [x] **Unit 7: Input + clipboard polish**
 
 **Goal:** Make keyboard and clipboard genuinely better than native tmux. Physical keyboard passes through; iOS-hostile keys have on-screen buttons; copy/paste / scrollback / search all work.
 
@@ -626,7 +627,7 @@ Markers (heuristic, see [research](#external-references)):
 
 ---
 
-- [ ] **Unit 8: Resize handling, shutdown resilience, version probe**
+- [x] **Unit 8: Resize handling, shutdown resilience, version probe**
 
 **Goal:** Production-quality housekeeping: window resize propagates to tmux, server Ctrl-C cleans up every attached client, tmux version is probed at startup, reconnect-on-disconnect logic in the JS client.
 

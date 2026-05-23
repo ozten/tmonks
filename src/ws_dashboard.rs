@@ -28,7 +28,6 @@ use tokio::sync::mpsc;
 
 use crate::auth::check_origin_for_ws;
 use crate::server::AppState;
-use crate::status::matchers::Status;
 use crate::status::poller::{self, PollerEvent, PollerHandle};
 use crate::tmux::TmuxConfig;
 
@@ -108,7 +107,6 @@ async fn run_dashboard(mut socket: WebSocket, state: AppState) -> anyhow::Result
                         })
                     }
                     PollerEvent::Error { session_id, message } => {
-                        let _ = status_to_string(Status::Unknown); // keeps Status import alive when poller types add fields
                         json!({
                             "type": "error",
                             "session_id": session_id,
@@ -133,10 +131,6 @@ async fn run_dashboard(mut socket: WebSocket, state: AppState) -> anyhow::Result
         handle.stop();
     }
     Ok(())
-}
-
-fn status_to_string(s: Status) -> &'static str {
-    s.as_str()
 }
 
 async fn send_sessions(
