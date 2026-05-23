@@ -10,6 +10,7 @@ pub mod cli;
 pub mod observability;
 pub mod server;
 pub mod templates;
+pub mod tmux;
 
 pub use auth::{COOKIE_NAME, Token};
 pub use server::{AppState, BuildInfo, router};
