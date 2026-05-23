@@ -11,6 +11,7 @@
 
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use tokio::process::Command;
@@ -40,20 +41,19 @@ struct TmuxFixture {
 
 impl TmuxFixture {
     async fn start(session_name: &str) -> Self {
+        static COUNTER: AtomicU32 = AtomicU32::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+
         let tempdir = tempfile::tempdir().unwrap();
-        // tmux socket lives at $TMUX_TMPDIR/tmux-$UID/$socket — we pin
-        // TMUX_TMPDIR to our tempdir so cleanup is automatic.
-        let socket = format!("tmons-test-{}", std::process::id());
-        let mut config = TmuxConfig {
+        // The tmux socket is `$TMUX_TMPDIR/tmux-$UID/$socket`. We rely on the
+        // socket name being unique per fixture (cargo test runs tests in
+        // parallel within the same process). Don't set TMUX_TMPDIR — it's a
+        // process-global env var and would race with other fixtures.
+        let socket = format!("tmons-test-{}-{}", std::process::id(), n);
+        let config = TmuxConfig {
             socket: Some(socket.clone()),
-            binary: None,
+            binary: Some(PathBuf::from("tmux")),
         };
-        // Pin TMUX_TMPDIR for child invocations.
-        let tmpdir_path = tempdir.path().to_path_buf();
-        unsafe {
-            std::env::set_var("TMUX_TMPDIR", &tmpdir_path);
-        }
-        config.binary = Some(PathBuf::from("tmux"));
 
         // Kill any leftover server on this socket from a prior failed run.
         let _ = Command::new("tmux")

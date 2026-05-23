@@ -59,15 +59,28 @@ pub fn list_sessions(fmt: &str) -> String {
     format!("list-sessions -F '{}'\n", escape_single_quotes(fmt))
 }
 
-/// `send-keys -t %<pane> -l <text>` — send literal text to a pane. Note: this
-/// is here for completeness; the pane WS forwards keystrokes via the
-/// control-mode session's stdin (`tmux -CC` treats stdin as keystrokes for
-/// the focused pane), not by issuing send-keys.
+/// `send-keys -t %<pane> -l <text>` — send literal text to a pane.
 pub fn send_keys_literal(pane: &PaneId, text: &str) -> String {
     format!(
         "send-keys -t {pane} -l '{}'\n",
         escape_single_quotes(text)
     )
+}
+
+/// `send-keys -t %<pane> -H <hex bytes>` — send raw bytes verbatim to a pane.
+///
+/// This is the path Unit 4 takes for browser keystrokes: encode the (already
+/// VT-filtered) inbound bytes as space-separated hex, issue one send-keys
+/// command per frame. Avoids the ambiguity of mixing keystrokes with control
+/// commands on the same stdin.
+pub fn send_keys_hex(pane: &PaneId, bytes: &[u8]) -> String {
+    let mut out = format!("send-keys -t {pane} -H");
+    for b in bytes {
+        out.push(' ');
+        let _ = std::fmt::Write::write_fmt(&mut out, format_args!("{b:02x}"));
+    }
+    out.push('\n');
+    out
 }
 
 /// Escape single quotes for inclusion inside a `'...'`-delimited tmux command.
@@ -102,6 +115,19 @@ mod tests {
     #[test]
     fn refresh_client_dims_format() {
         assert_eq!(refresh_client_dims(80, 24), "refresh-client -C 80x24\n");
+    }
+
+    #[test]
+    fn send_keys_hex_encodes_bytes() {
+        assert_eq!(
+            send_keys_hex(&"%0".into(), b"hello"),
+            "send-keys -t %0 -H 68 65 6c 6c 6f\n"
+        );
+        assert_eq!(
+            send_keys_hex(&"%0".into(), &[0x1b, 0x5b, 0x41]),
+            "send-keys -t %0 -H 1b 5b 41\n"
+        );
+        assert_eq!(send_keys_hex(&"%0".into(), &[]), "send-keys -t %0 -H\n");
     }
 
     #[test]

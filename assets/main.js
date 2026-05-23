@@ -1,14 +1,179 @@
-// tmons — minimal frontend shell (Unit 1).
-// Subsequent units wire up the dashboard WS (Unit 5) and pane WS (Unit 4),
-// the on-screen key row (Unit 7), and reconnect logic (Unit 8).
+// tmons frontend — sidebar + focused-pane WebSocket client.
 //
-// CSP: this file is served `script-src 'self'`. No inline scripts anywhere.
+// CSP: served as `script-src 'self'`. No inline scripts. The page loads
+// `xterm.js`, `addon-fit`, `addon-web-links`, and `addon-search` from
+// `/assets/vendor/`.
+//
+// Binary protocol (see src/ws_pane.rs):
+//
+//   Server → client tags:
+//     0x01  seed     — initial scrollback; client calls term.reset() first
+//     0x02  live     — appended pane bytes
+//     0x13  scrollback-response (Unit 7 copy-all button)
+//
+//   Client → server tags:
+//     0x10  stdin    — keystrokes / pasted bytes
+//     0x11  resize   — [cols u16 BE][rows u16 BE]
+//     0x12  request-scrollback
 
 import { Terminal } from "/assets/vendor/xterm.mjs";
 import { FitAddon } from "/assets/vendor/addon-fit.mjs";
 import { WebLinksAddon } from "/assets/vendor/addon-web-links.mjs";
+import { SearchAddon } from "/assets/vendor/addon-search.mjs";
 
 const $ = (sel) => document.querySelector(sel);
+
+// ---- Pane WebSocket client --------------------------------------------------
+
+class PaneClient {
+  constructor(term, fit, sessionId) {
+    this.term = term;
+    this.fit = fit;
+    this.sessionId = sessionId;
+    this.ws = null;
+    this.pendingScrollback = null;
+    this._onData = null;
+    this._resizeDebounce = null;
+    this._lastReportedSize = null;
+  }
+
+  connect() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${location.host}/ws/pane/${encodeURIComponent(this.sessionId)}`;
+    this.ws = new WebSocket(url);
+    this.ws.binaryType = "arraybuffer";
+    this.ws.addEventListener("open", () => this._onOpen());
+    this.ws.addEventListener("message", (ev) => this._onMessage(ev));
+    this.ws.addEventListener("close", (ev) => this._onClose(ev));
+    this.ws.addEventListener("error", (ev) => this._onError(ev));
+  }
+
+  close() {
+    if (this._onData) {
+      this._onData.dispose();
+      this._onData = null;
+    }
+    if (this.ws && this.ws.readyState <= WebSocket.OPEN) {
+      this.ws.close();
+    }
+    this.ws = null;
+  }
+
+  _onOpen() {
+    // Hook xterm.js onData → 0x10 stdin frame.
+    this._onData = this.term.onData((str) => {
+      const bytes = new TextEncoder().encode(str);
+      const frame = new Uint8Array(bytes.length + 1);
+      frame[0] = 0x10;
+      frame.set(bytes, 1);
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(frame);
+      }
+    });
+
+    // Report current size (cols × rows).
+    this._sendResize();
+  }
+
+  _sendResize() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const cols = this.term.cols;
+    const rows = this.term.rows;
+    if (this._lastReportedSize &&
+        this._lastReportedSize.cols === cols &&
+        this._lastReportedSize.rows === rows) return;
+    this._lastReportedSize = { cols, rows };
+
+    const frame = new Uint8Array(5);
+    frame[0] = 0x11;
+    frame[1] = (cols >> 8) & 0xff;
+    frame[2] = cols & 0xff;
+    frame[3] = (rows >> 8) & 0xff;
+    frame[4] = rows & 0xff;
+    this.ws.send(frame);
+  }
+
+  /** Debounced resize. Unit 6 calls this from a ResizeObserver. */
+  onContainerResize() {
+    clearTimeout(this._resizeDebounce);
+    this._resizeDebounce = setTimeout(() => {
+      try { this.fit.fit(); } catch (_) {}
+      this._sendResize();
+    }, 100);
+  }
+
+  /** Returns a Promise resolving to the full scrollback bytes. */
+  requestScrollback() {
+    if (this.pendingScrollback) {
+      return this.pendingScrollback;
+    }
+    this.pendingScrollback = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingScrollback = null;
+        reject(new Error("scrollback request timed out"));
+      }, 15000);
+      this._scrollbackResolver = (bytes) => {
+        clearTimeout(timer);
+        this.pendingScrollback = null;
+        resolve(bytes);
+      };
+      const frame = new Uint8Array([0x12]);
+      this.ws.send(frame);
+    });
+    return this.pendingScrollback;
+  }
+
+  _onMessage(ev) {
+    if (typeof ev.data === "string") {
+      // Text frame: JSON error.
+      try {
+        const body = JSON.parse(ev.data);
+        if (body.err) {
+          showToast(`Pane error: ${body.err}`);
+        }
+      } catch (_) {}
+      return;
+    }
+    const buf = new Uint8Array(ev.data);
+    if (buf.length === 0) return;
+    const tag = buf[0];
+    const payload = buf.subarray(1);
+    switch (tag) {
+      case 0x01: { // seed
+        this.term.reset();
+        this.term.write(payload);
+        break;
+      }
+      case 0x02: { // live
+        this.term.write(payload);
+        break;
+      }
+      case 0x13: { // scrollback-response
+        if (this._scrollbackResolver) {
+          this._scrollbackResolver(payload);
+          this._scrollbackResolver = null;
+        }
+        break;
+      }
+      default:
+        console.warn("unknown ws tag", tag);
+    }
+  }
+
+  _onClose(ev) {
+    if (this._onData) { this._onData.dispose(); this._onData = null; }
+    // Unit 8 wires reconnect with exponential backoff here.
+    if (ev.code !== 1000 && ev.code !== 1001) {
+      showToast(`Pane closed (${ev.code}): ${ev.reason || "no reason"}`);
+    }
+  }
+
+  _onError(ev) {
+    console.warn("ws error", ev);
+  }
+}
+
+// ---- Terminal mount --------------------------------------------------------
 
 function mountTerminal() {
   const container = $("#terminal-container");
@@ -31,23 +196,20 @@ function mountTerminal() {
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.loadAddon(new WebLinksAddon());
+  const search = new SearchAddon();
+  term.loadAddon(search);
+
   term.open(container);
   fit.fit();
 
-  // ResizeObserver re-fits on container size changes. Resize WS frame
-  // forwarding is added in Unit 8.
-  const ro = new ResizeObserver(() => {
-    try { fit.fit(); } catch (_) { /* xterm not ready */ }
-  });
-  ro.observe(container);
-
-  // Greeting in lieu of a live pane (replaced when Unit 4 ships).
+  // Hint the user; this is overwritten by the seed frame on session focus.
   term.writeln("tmons \x1b[36m" + window.location.host + "\x1b[0m");
-  term.writeln("\x1b[2mNo session selected. Sessions appear in the sidebar when /ws/dashboard is wired (Unit 5).\x1b[0m");
-  term.writeln("");
+  term.writeln("\x1b[2mSelect a session in the sidebar to focus its pane.\x1b[0m");
 
-  return { term, fit };
+  return { term, fit, search };
 }
+
+// ---- Sidebar toggle --------------------------------------------------------
 
 function wireSidebarToggle() {
   const toggle = $("#sidebar-toggle");
@@ -58,8 +220,49 @@ function wireSidebarToggle() {
   });
 }
 
+// ---- Toast helper ----------------------------------------------------------
+
+function showToast(msg, ms = 4000) {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.className = "toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.display = "block";
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => {
+    toast.style.display = "none";
+  }, ms);
+}
+
+// ---- Bootstrap -------------------------------------------------------------
+
 document.addEventListener("DOMContentLoaded", () => {
   wireSidebarToggle();
+
+  const mounted = mountTerminal();
+  if (!mounted) return;
+
+  // Sidebar wiring is fleshed out by Unit 5/6. For now we expose hooks for
+  // manual session selection during development.
   window.tmons = window.tmons || {};
-  window.tmons.terminal = mountTerminal();
+  window.tmons.terminal = mounted;
+  window.tmons.openSession = (sessionId) => {
+    if (window.tmons.pane) {
+      window.tmons.pane.close();
+    }
+    const client = new PaneClient(mounted.term, mounted.fit, sessionId);
+    client.connect();
+    window.tmons.pane = client;
+
+    // Wire ResizeObserver to debounce-forward dimensions.
+    const container = $("#terminal-container");
+    const ro = new ResizeObserver(() => client.onContainerResize());
+    ro.observe(container);
+    return client;
+  };
+  window.tmons.showToast = showToast;
 });

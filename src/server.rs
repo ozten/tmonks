@@ -86,6 +86,7 @@ pub fn router(state: AppState) -> Router {
         .route("/", get(root))
         .route("/assets/{*path}", get(assets::serve))
         .route("/debug/state", get(debug_state))
+        .route("/ws/pane/{session_id}", get(crate::ws_pane::ws_pane_handler))
         .layer(
             ServiceBuilder::new()
                 .layer(
