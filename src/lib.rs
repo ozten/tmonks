@@ -10,8 +10,10 @@ pub mod cli;
 pub mod observability;
 pub mod server;
 pub mod templates;
+pub mod status;
 pub mod tmux;
 pub mod vt_filter;
+pub mod ws_dashboard;
 pub mod ws_pane;
 
 pub use auth::{COOKIE_NAME, Token};

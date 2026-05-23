@@ -10,6 +10,7 @@ use tmons::{
     cli,
     observability,
     server::{self, AppState},
+    status::version_probe,
 };
 
 fn main() -> ExitCode {
@@ -68,6 +69,9 @@ async fn run(args: cli::Cli) -> Result<()> {
     if args.no_auth {
         println!("Note: --no-auth is active. Token in URL is ignored.");
     }
+
+    // Probe the supported agent CLIs at startup; log calibrated-vs-detected.
+    tokio::spawn(version_probe::probe_all());
 
     let router = server::router(state);
 

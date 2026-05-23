@@ -1,0 +1,5 @@
+Do you want to proceed with this command?
+
+❯ 1. Yes
+  2. Yes, and don't ask again
+  3. No, tell Claude what to do differently

@@ -240,17 +240,168 @@ function showToast(msg, ms = 4000) {
 
 // ---- Bootstrap -------------------------------------------------------------
 
+// ---- Dashboard WebSocket client --------------------------------------------
+
+class DashboardClient {
+  constructor(sidebar) {
+    this.sidebar = sidebar;
+    this.ws = null;
+  }
+
+  connect() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${location.host}/ws/dashboard`;
+    this.ws = new WebSocket(url);
+    this.ws.addEventListener("message", (ev) => this._onMessage(ev));
+    this.ws.addEventListener("close", () => {
+      // Unit 8 wires reconnect logic.
+    });
+  }
+
+  _onMessage(ev) {
+    if (typeof ev.data !== "string") return;
+    let body;
+    try { body = JSON.parse(ev.data); } catch (_) { return; }
+    switch (body.type) {
+      case "sessions": this.sidebar.renderSessions(body.items || []); break;
+      case "status": this.sidebar.updateStatus(body.session_id, body.status, body.command); break;
+      case "error": this.sidebar.markError(body.session_id, body.message); break;
+      default: console.warn("unknown dashboard frame", body);
+    }
+  }
+}
+
+// ---- Sidebar component -----------------------------------------------------
+
+class Sidebar {
+  constructor(listEl, onSelect) {
+    this.listEl = listEl;
+    this.onSelect = onSelect;
+    /** @type {Map<string, {row: HTMLElement, status: string, name: string, command: string}>} */
+    this.items = new Map();
+    this.activeId = null;
+  }
+
+  renderSessions(items) {
+    if (!items.length) {
+      this.items.clear();
+      this.listEl.innerHTML = "";
+      const empty = document.createElement("li");
+      empty.className = "empty-hint empty-state";
+      empty.textContent = "No tmux sessions found.";
+      const code = document.createElement("code");
+      code.textContent = "tmux new -s work";
+      empty.appendChild(code);
+      this.listEl.appendChild(empty);
+      return;
+    }
+
+    // Set-diff merge: preserve scroll + focus state.
+    const incoming = new Set(items.map((i) => i.id));
+    for (const id of [...this.items.keys()]) {
+      if (!incoming.has(id)) {
+        const { row } = this.items.get(id);
+        row.remove();
+        this.items.delete(id);
+      }
+    }
+    for (const { id, name } of items) {
+      let entry = this.items.get(id);
+      if (!entry) {
+        entry = { row: this._buildRow(id, name), status: "unknown", name, command: "" };
+        this.listEl.appendChild(entry.row);
+        this.items.set(id, entry);
+      } else if (entry.name !== name) {
+        entry.row.querySelector(".session-name").textContent = name;
+        entry.name = name;
+      }
+    }
+
+    // Remove a stale empty-state if it's still around.
+    const ghost = this.listEl.querySelector("li.empty-hint:not([data-id])");
+    if (ghost) ghost.remove();
+  }
+
+  updateStatus(sessionId, status, command) {
+    const entry = this.items.get(sessionId);
+    if (!entry) return;
+    const dot = entry.row.querySelector(".status-dot");
+    dot.className = `status-dot ${status}`;
+    entry.row.setAttribute("aria-label", `${entry.name} — ${status}${command ? " (" + command + ")" : ""}`);
+    if (command && command !== entry.command) {
+      entry.command = command;
+      const meta = entry.row.querySelector(".session-meta");
+      if (meta) meta.textContent = command;
+    }
+    entry.status = status;
+  }
+
+  markError(sessionId, message) {
+    const entry = this.items.get(sessionId);
+    if (!entry) return;
+    let err = entry.row.querySelector(".session-error");
+    if (!err) {
+      err = document.createElement("span");
+      err.className = "session-error";
+      err.textContent = "!";
+      err.title = message;
+      entry.row.appendChild(err);
+    } else {
+      err.title = message;
+    }
+  }
+
+  setActive(sessionId) {
+    if (this.activeId) {
+      const prev = this.items.get(this.activeId);
+      if (prev) prev.row.classList.remove("active");
+    }
+    this.activeId = sessionId;
+    const entry = this.items.get(sessionId);
+    if (entry) entry.row.classList.add("active");
+  }
+
+  _buildRow(id, name) {
+    const li = document.createElement("li");
+    li.dataset.id = id;
+    li.setAttribute("role", "button");
+    li.tabIndex = 0;
+    const dot = document.createElement("span");
+    dot.className = "status-dot unknown";
+    li.appendChild(dot);
+    const meta = document.createElement("div");
+    const nameEl = document.createElement("div");
+    nameEl.className = "session-name";
+    nameEl.textContent = name;
+    meta.appendChild(nameEl);
+    const cmdEl = document.createElement("div");
+    cmdEl.className = "session-meta";
+    cmdEl.textContent = "";
+    meta.appendChild(cmdEl);
+    li.appendChild(meta);
+    li.addEventListener("click", () => this.onSelect(id));
+    li.addEventListener("keypress", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        this.onSelect(id);
+      }
+    });
+    return li;
+  }
+}
+
+// ---- Bootstrap -------------------------------------------------------------
+
 document.addEventListener("DOMContentLoaded", () => {
   wireSidebarToggle();
 
   const mounted = mountTerminal();
   if (!mounted) return;
 
-  // Sidebar wiring is fleshed out by Unit 5/6. For now we expose hooks for
-  // manual session selection during development.
   window.tmons = window.tmons || {};
   window.tmons.terminal = mounted;
-  window.tmons.openSession = (sessionId) => {
+
+  const openSession = (sessionId) => {
     if (window.tmons.pane) {
       window.tmons.pane.close();
     }
@@ -258,11 +409,23 @@ document.addEventListener("DOMContentLoaded", () => {
     client.connect();
     window.tmons.pane = client;
 
-    // Wire ResizeObserver to debounce-forward dimensions.
     const container = $("#terminal-container");
+    if (window.tmons._paneRO) window.tmons._paneRO.disconnect();
     const ro = new ResizeObserver(() => client.onContainerResize());
     ro.observe(container);
+    window.tmons._paneRO = ro;
+    sidebar.setActive(sessionId);
+
+    // Hide the sidebar drawer on mobile after selection.
+    document.getElementById("sidebar")?.classList.remove("open");
     return client;
   };
+  window.tmons.openSession = openSession;
   window.tmons.showToast = showToast;
+
+  const sidebar = new Sidebar(document.getElementById("session-list"), openSession);
+  const dashboard = new DashboardClient(sidebar);
+  dashboard.connect();
+  window.tmons.dashboard = dashboard;
+  window.tmons.sidebar = sidebar;
 });
