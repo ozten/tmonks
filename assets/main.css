@@ -290,6 +290,45 @@ html, body {
   to { opacity: 1; transform: none; }
 }
 
+.retry-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--badge-working);
+  color: black;
+  text-align: center;
+  font-size: 12px;
+  padding: 4px;
+  z-index: 50;
+  display: none;
+}
+
+.retry-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.85);
+  z-index: 200;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.retry-overlay button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
 .empty-state {
   padding: 24px;
   color: var(--fg-muted);

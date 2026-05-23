@@ -34,6 +34,9 @@ const STATUS_LABELS = {
 
 // ---- Pane WebSocket client --------------------------------------------------
 
+/** WebSocket reconnect backoff steps (ms). After all 5 exhausted, give up. */
+const RECONNECT_BACKOFFS_MS = [200, 400, 800, 1600, 3200];
+
 class PaneClient {
   constructor(term, fit, sessionId) {
     this.term = term;
@@ -44,21 +47,29 @@ class PaneClient {
     this._onData = null;
     this._resizeDebounce = null;
     this._lastReportedSize = null;
+    this._reconnectAttempt = 0;
+    this._stopped = false;
   }
 
   connect() {
+    this._stopped = false;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/ws/pane/${encodeURIComponent(this.sessionId)}`;
     this.ws = new WebSocket(url);
     this.ws.binaryType = "arraybuffer";
     this._sawAnyMessage = false;
-    this.ws.addEventListener("open", () => this._onOpen());
+    this.ws.addEventListener("open", () => {
+      this._reconnectAttempt = 0;
+      hideRetryStrip();
+      this._onOpen();
+    });
     this.ws.addEventListener("message", (ev) => { this._sawAnyMessage = true; this._onMessage(ev); });
     this.ws.addEventListener("close", (ev) => this._onClose(ev));
     this.ws.addEventListener("error", (ev) => this._onError(ev));
   }
 
   close() {
+    this._stopped = true;
     if (this._onData) {
       this._onData.dispose();
       this._onData = null;
@@ -67,6 +78,7 @@ class PaneClient {
       this.ws.close();
     }
     this.ws = null;
+    hideRetryStrip();
   }
 
   _onOpen() {
@@ -172,9 +184,11 @@ class PaneClient {
 
   _onClose(ev) {
     if (this._onData) { this._onData.dispose(); this._onData = null; }
+    if (this._stopped) return;
+
     // If the WS closed before any data arrived, treat as "session not
     // found / no longer exists" — show a toast and ask the dashboard for
-    // a fresh session list.
+    // a fresh session list. Do NOT auto-reconnect (the session is gone).
     if (!this._sawAnyMessage && ev.code === 1011) {
       showToast(`Session ${this.sessionId} no longer exists`);
       if (window.tmons?.dashboard?.refresh) {
@@ -182,9 +196,22 @@ class PaneClient {
       }
       return;
     }
-    // Unit 8 wires reconnect with exponential backoff here.
-    if (ev.code !== 1000 && ev.code !== 1001) {
-      showToast(`Pane closed (${ev.code}): ${ev.reason || "no reason"}`);
+
+    // Normal close codes (user-initiated or server-shutdown): don't retry.
+    if (ev.code === 1000 || ev.code === 1001) return;
+
+    if (this._reconnectAttempt < RECONNECT_BACKOFFS_MS.length) {
+      const delay = RECONNECT_BACKOFFS_MS[this._reconnectAttempt];
+      showRetryStrip(`Reconnecting in ${delay}ms…`);
+      this._reconnectAttempt += 1;
+      setTimeout(() => {
+        if (!this._stopped) this.connect();
+      }, delay);
+    } else {
+      showRetryOverlay("tmux pane not reachable", () => {
+        this._reconnectAttempt = 0;
+        this.connect();
+      });
     }
   }
 
@@ -390,6 +417,48 @@ function wireSidebarToggle() {
   });
 }
 
+// ---- Retry UI --------------------------------------------------------------
+
+function showRetryStrip(msg) {
+  let strip = document.getElementById("retry-strip");
+  if (!strip) {
+    strip = document.createElement("div");
+    strip.id = "retry-strip";
+    strip.className = "retry-strip";
+    document.body.appendChild(strip);
+  }
+  strip.textContent = msg;
+  strip.style.display = "block";
+}
+
+function hideRetryStrip() {
+  const strip = document.getElementById("retry-strip");
+  if (strip) strip.style.display = "none";
+}
+
+function showRetryOverlay(message, onRetry) {
+  let ov = document.getElementById("retry-overlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "retry-overlay";
+    ov.className = "retry-overlay";
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = "";
+  const text = document.createElement("div");
+  text.textContent = message;
+  const btn = document.createElement("button");
+  btn.textContent = "Retry";
+  btn.addEventListener("click", () => {
+    ov.style.display = "none";
+    hideRetryStrip();
+    onRetry();
+  });
+  ov.appendChild(text);
+  ov.appendChild(btn);
+  ov.style.display = "flex";
+}
+
 // ---- Toast helper ----------------------------------------------------------
 
 function showToast(msg, ms = 4000) {
@@ -416,16 +485,36 @@ class DashboardClient {
   constructor(sidebar) {
     this.sidebar = sidebar;
     this.ws = null;
+    this._reconnectAttempt = 0;
+    this._stopped = false;
   }
 
   connect() {
+    this._stopped = false;
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const url = `${proto}//${location.host}/ws/dashboard`;
     this.ws = new WebSocket(url);
-    this.ws.addEventListener("message", (ev) => this._onMessage(ev));
-    this.ws.addEventListener("close", () => {
-      // Unit 8 wires reconnect logic.
+    this.ws.addEventListener("open", () => {
+      this._reconnectAttempt = 0;
+      hideRetryStrip();
     });
+    this.ws.addEventListener("message", (ev) => this._onMessage(ev));
+    this.ws.addEventListener("close", (ev) => this._onClose(ev));
+  }
+
+  _onClose(ev) {
+    if (this._stopped) return;
+    if (ev.code === 1000 || ev.code === 1001) return;
+    if (this._reconnectAttempt < RECONNECT_BACKOFFS_MS.length) {
+      const delay = RECONNECT_BACKOFFS_MS[this._reconnectAttempt];
+      this._reconnectAttempt += 1;
+      setTimeout(() => { if (!this._stopped) this.connect(); }, delay);
+    } else {
+      showRetryOverlay("Dashboard not reachable", () => {
+        this._reconnectAttempt = 0;
+        this.connect();
+      });
+    }
   }
 
   /** Reconnect, forcing the server to send a fresh `sessions` frame. */

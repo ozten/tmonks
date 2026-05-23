@@ -9,6 +9,7 @@ pub mod control_mode;
 pub mod escape;
 pub mod events;
 pub mod parser;
+pub mod version;
 
 pub use control_mode::{ControlMode, TmuxConfig, connect, probe_version};
 pub use events::{ControlEvent, PaneId, SessionId, WindowId};

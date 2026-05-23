@@ -11,6 +11,7 @@ use tmons::{
     observability,
     server::{self, AppState},
     status::version_probe,
+    tmux::{TmuxConfig, probe_version, version as tmux_version},
 };
 
 fn main() -> ExitCode {
@@ -49,6 +50,29 @@ fn main() -> ExitCode {
 }
 
 async fn run(args: cli::Cli) -> Result<()> {
+    // Probe tmux version at startup; refuse to start if too old or missing.
+    let probe_cfg = TmuxConfig {
+        socket: args.socket.clone(),
+        binary: None,
+    };
+    let v_line = probe_version(&probe_cfg)
+        .await
+        .context("tmux -V probe failed. Is tmux installed and on PATH?")?;
+    match tmux_version::parse(&v_line)? {
+        None => {
+            tracing::info!(version = %v_line, "tmux master build accepted");
+        }
+        Some(v) => {
+            if !v.satisfies_min() {
+                anyhow::bail!(
+                    "tmux {}.{} is too old. tmons requires tmux >= 3.4. Detected line: {v_line:?}",
+                    v.major, v.minor
+                );
+            }
+            tracing::info!(detected = %v_line, "tmux version ok");
+        }
+    }
+
     let token = auth::Token::new_random().context("generate auth token")?;
 
     let bind_addr = SocketAddr::new(args.bind, args.port);
